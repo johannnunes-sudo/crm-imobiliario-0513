@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { useMemo, useState } from "react";
 import { Building2, MapPin, Pencil, Plus } from "lucide-react";
 import { useCrm } from "../hooks/use-crm";
@@ -88,7 +89,7 @@ export default function Empreendimentos() {
                   <Building2 className="size-5" />
                 </div>
                 <div>
-                  <div className="font-display text-[15.5px] font-semibold">{r.p.name}</div>
+                  <Link to={`/empreendimentos/${r.p.id}`} className="font-display text-[15.5px] font-semibold hover:underline">{r.p.name}</Link>
                   <div className="flex items-center gap-1 text-[12.5px] text-muted-foreground">
                     <MapPin className="size-3" /> {r.p.neighborhood || "—"} {r.p.delivery && <>· entrega {r.p.delivery}</>}
                   </div>
@@ -129,6 +130,9 @@ export default function Empreendimentos() {
                 </div>
               ))}
             </div>
+            <Link to={`/empreendimentos/${r.p.id}`} className="border-t border-border px-5 py-2.5 text-[12.5px] font-medium text-brand-strong hover:bg-muted/50">
+              Ver histórico de vendas →
+            </Link>
           </Panel>
         ))}
       </div>

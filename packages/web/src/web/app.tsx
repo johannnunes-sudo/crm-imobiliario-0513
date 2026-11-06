@@ -12,6 +12,7 @@ import Ficha from "./pages/ficha";
 import Agenda from "./pages/agenda";
 import Registro from "./pages/registro";
 import Empreendimentos from "./pages/empreendimentos";
+import Empreendimento from "./pages/empreendimento";
 import Relatorios from "./pages/relatorios";
 import Configuracoes from "./pages/configuracoes";
 import { Empty } from "./components/ui/kit";
@@ -34,6 +35,7 @@ function App() {
                 <Route path="/agenda" component={Agenda} />
                 <Route path="/registro" component={Registro} />
                 <Route path="/empreendimentos" component={Empreendimentos} />
+                <Route path="/empreendimentos/:id" component={Empreendimento} />
                 <Route path="/relatorios" component={Relatorios} />
                 <Route path="/configuracoes" component={Configuracoes} />
                 <Route>

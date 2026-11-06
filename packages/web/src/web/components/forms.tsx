@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BrokerInput } from "./broker-input";
 import { ACTIVITY_TYPES, AGENCY_FOCUS, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, CHANNELS, DECLINE_REASONS, FOCUS_CITIES, OPP_STAGES, PRODUCT_STANDARDS, TEMPERATURES } from "../../shared/constants";
 import {
   useCreateActivity, useCreateAgency, useCreateOpportunity, useUpdateAgency, useUpdateOpportunity, useRemoveOpportunity,
@@ -118,7 +119,7 @@ export function OpportunityDialog({ open, onClose, initial, preset, onSaved }: {
           </Select>
         </Field>
         <Field label={BROKER_REQUIRED_OPP_STAGES.has(f.stage) ? "Corretor *" : "Corretor"} hint={BROKER_REQUIRED_OPP_STAGES.has(f.stage) ? "Obrigatório em proposta e venda" : undefined}>
-          <Input value={f.brokerName ?? ""} onChange={(e) => set("brokerName", e.target.value)} placeholder="Nome do corretor" className={BROKER_REQUIRED_OPP_STAGES.has(f.stage) && !f.brokerName?.trim() ? "border-danger/60" : undefined} />
+          <BrokerInput value={f.brokerName ?? ""} onChange={(v) => set("brokerName", v)} agencyId={f.agencyId} className={BROKER_REQUIRED_OPP_STAGES.has(f.stage) && !f.brokerName?.trim() ? "border-danger/60" : undefined} />
         </Field>
         <Field label="Empreendimento">
           <Select value={f.productId ?? ""} onChange={(e) => set("productId", e.target.value ? Number(e.target.value) : null)}>
@@ -326,7 +327,7 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
           </div>
         )}
         <Field label="Corretor *" hint="Obrigatório para registrar a venda">
-          <Input value={broker} onChange={(e) => setBroker(e.target.value)} placeholder="Nome do corretor" className={!broker.trim() ? "border-danger/60" : undefined} />
+          <BrokerInput value={broker} onChange={setBroker} agencyId={o?.agencyId} className={!broker.trim() ? "border-danger/60" : undefined} />
         </Field>
         <Field label="Valor de contrato (R$) *" hint={table && contract ? `Desconto final ${pct(Math.max(0, 1 - contract / table), 1)} sobre a tabela` : undefined}>
           <Input type="number" min={0} value={money(contract)} onChange={(e) => setContract(toMoney(e.target.value))} placeholder="0" />
@@ -503,11 +504,15 @@ export function ActivityFields({ f, set, compact }: { f: ActivityDraft; set: <K 
       {needsPerson && (
         <>
           <Field label={f.type === "Atendimento ao cliente" ? "Cliente" : "Corretor"}>
-            <Input value={f.personName} onChange={(e) => set("personName", e.target.value)} placeholder="Nome" />
+            {f.type === "Atendimento ao cliente" ? (
+              <Input value={f.personName} onChange={(e) => set("personName", e.target.value)} placeholder="Nome" />
+            ) : (
+              <BrokerInput value={f.personName} onChange={(v) => set("personName", v)} agencyId={f.agencyId} placeholder="Nome" />
+            )}
           </Field>
           {BROKER_REQUIRED_ACTIVITY.has(f.type) && (
             <Field label="Corretor *" hint="Obrigatório no atendimento ao cliente">
-              <Input value={f.brokerName ?? ""} onChange={(e) => set("brokerName", e.target.value)} placeholder="Corretor que trouxe o cliente" className={!f.brokerName?.trim() ? "border-danger/60" : undefined} />
+              <BrokerInput value={f.brokerName ?? ""} onChange={(v) => set("brokerName", v)} agencyId={f.agencyId} placeholder="Corretor que trouxe o cliente" className={!f.brokerName?.trim() ? "border-danger/60" : undefined} />
             </Field>
           )}
           <Field label="Canal">

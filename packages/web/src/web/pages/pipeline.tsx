@@ -34,7 +34,7 @@ export default function Pipeline() {
     () =>
       c.scoped.opportunities.filter(
         (o) =>
-          (!q || o.client.toLowerCase().includes(q.toLowerCase()) || c.agencyName(o.agencyId).toLowerCase().includes(q.toLowerCase())) &&
+          (!q || o.client.toLowerCase().includes(q.toLowerCase()) || c.agencyName(o.agencyId).toLowerCase().includes(q.toLowerCase()) || (o.brokerName ?? "").toLowerCase().includes(q.toLowerCase())) &&
           (!product || o.productId === product) &&
           (!temp || o.temperature === temp),
       ),
@@ -248,7 +248,7 @@ export default function Pipeline() {
       <div className="mt-5 mb-4 flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente ou imobiliária" className="h-8.5 w-64 pl-8" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente, imobiliária ou corretor" className="h-8.5 w-64 pl-8" />
         </div>
         <Select className="h-8.5 w-auto" value={product} onChange={(e) => setProduct(e.target.value ? Number(e.target.value) : "")}>
           <option value="">Todos os empreendimentos</option>
@@ -312,7 +312,7 @@ export default function Pipeline() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="truncate text-[13.5px] font-medium">{o.client}</div>
-                            <div className="truncate text-[12px] text-muted-foreground">{c.agencyName(o.agencyId)}</div>
+                            <div className="truncate text-[12px] text-muted-foreground">{c.agencyName(o.agencyId)}{o.brokerName ? ` · ${o.brokerName}` : ""}</div>
                           </div>
                           <GripVertical className="size-3.5 shrink-0 text-subtle opacity-0 group-hover:opacity-100" />
                         </div>
@@ -338,11 +338,12 @@ export default function Pipeline() {
         </div>
       ) : (
         <Panel>
-          <Table head={["Cliente", "Imobiliária", "Empreendimento", "Unidade", "Etapa", "Tabela", "Proposta", "Contrato", "Data"]}>
+          <Table head={["Cliente", "Imobiliária", "Corretor", "Empreendimento", "Unidade", "Etapa", "Tabela", "Proposta", "Contrato", "Data"]}>
             {list.map((o) => (
               <tr key={o.id} className="cursor-pointer" onClick={() => openEdit(o)}>
                 <td className="font-medium">{o.client}</td>
                 <td className="text-muted-foreground">{c.agencyName(o.agencyId)}</td>
+                <td className="text-muted-foreground">{o.brokerName || "—"}</td>
                 <td className="text-muted-foreground">{c.productName(o.productId)}</td>
                 <td className="tnum">{o.unit || "—"}</td>
                 <td><Badge tone={oppStageTone[o.stage]} dot>{o.stage}</Badge></td>

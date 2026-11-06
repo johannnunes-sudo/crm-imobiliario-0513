@@ -12,9 +12,10 @@ import { GlobalFilters } from "../components/filters";
 import { AreaTrend } from "../components/charts";
 import { ActivityDialog, AgencyDialog, OpportunityDialog } from "../components/forms";
 import { useStageAdvance } from "../components/stage-advance";
+import { brokerList, brokerOfActivity } from "../lib/brokers";
 import { Avatar, Badge, Button, Empty, KpiStrip, PageSkeleton, Panel, PanelHeader, Progress, Segmented, Table, Tabs } from "../components/ui/kit";
 
-type Tab = "performance" | "historico" | "oportunidades" | "cadastro";
+type Tab = "performance" | "historico" | "oportunidades" | "cadastro" | "corretores";
 
 export default function Ficha() {
   const { id } = useParams<{ id: string }>();
@@ -60,6 +61,7 @@ export default function Ficha() {
   const compMax = Math.max(1, ...d.comp.map((x) => x.v));
   const h = health(d.days);
 
+  const brokers = brokerList(d.opps, d.acts, a.id);
   const agencyExits = (exitsQ.data ?? []).filter((x) => x.agencyId === a.id);
   const pendingExit = agencyExits.some((x) => x.status === "pendente");
 
@@ -129,6 +131,7 @@ export default function Ficha() {
             { value: "performance", label: "Performance" },
             { value: "historico", label: "Histórico", count: d.acts.length },
             { value: "oportunidades", label: "Oportunidades", count: d.opps.length },
+            { value: "corretores", label: "Corretores", count: brokers.length },
             { value: "cadastro", label: "Cadastro" },
           ]}
         />
@@ -174,17 +177,38 @@ export default function Ficha() {
         </div>
       )}
 
+      {tab === "corretores" && (
+        <Panel>
+          <PanelHeader title="Corretores desta imobiliária" subtitle="Quem aparece nas negociações e atividades · grafias parecidas são agrupadas" />
+          {brokers.length === 0 ? <Empty title="Nenhum corretor registrado ainda" /> : (
+            <Table head={["Corretor", "Atividades concluídas", "Propostas", "Vendas", "VGV vendido", "Último registro"]}>
+              {brokers.map((b) => (
+                <tr key={b.key}>
+                  <td className="font-medium">{b.name}</td>
+                  <td className="tnum">{b.activities}</td>
+                  <td className="tnum">{b.proposals}</td>
+                  <td className="tnum font-medium">{b.sales}</td>
+                  <td className="tnum">{b.vgv ? brl(b.vgv) : "—"}</td>
+                  <td className="tnum text-muted-foreground">{fmtDate(b.last)}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </Panel>
+      )}
+
       {tab === "historico" && (
         <Panel>
           {d.acts.length === 0 ? (
             <Empty title="Sem atividades registradas" />
           ) : (
-            <Table head={["Data", "Atividade", "Situação", "Empreendimento", "Resultado", "Gerente"]}>
+            <Table head={["Data", "Atividade", "Situação", "Corretor", "Empreendimento", "Resultado", "Gerente"]}>
               {d.acts.map((x) => (
                 <tr key={x.id}>
                   <td className="tnum whitespace-nowrap text-muted-foreground">{fmtDate(x.date)}</td>
                   <td className="font-medium">{x.type}</td>
                   <td><Badge tone={x.status === "Concluída" ? "brand" : x.status === "Planejada" ? "amber" : "neutral"} dot>{x.status}</Badge></td>
+                  <td className="text-muted-foreground">{brokerOfActivity(x) ?? "—"}</td>
                   <td className="text-muted-foreground">{c.productName(x.productId)}</td>
                   <td className="max-w-[320px] truncate text-muted-foreground">{x.notes}{x.participants > 1 ? ` · ${x.participants} participantes` : ""}</td>
                   <td className="text-muted-foreground">{c.manager(x.managerId)?.name.split(" ")[0]}</td>
@@ -200,13 +224,11 @@ export default function Ficha() {
           {d.opps.length === 0 ? (
             <Empty title="Nenhuma oportunidade vinculada"><Button className="mt-3" onClick={() => setDlg("opp")}>Criar oportunidade</Button></Empty>
           ) : (
-            <Table head={["Cliente", "Empreendimento", "Unidade", "Etapa", "Tabela", "Proposta", "Contrato", "Data"]}>
+            <Table head={["Cliente", "Corretor", "Empreendimento", "Unidade", "Etapa", "Tabela", "Proposta", "Contrato", "Data"]}>
               {d.opps.map((o) => (
                 <tr key={o.id}>
-                  <td>
-                    <div className="font-medium">{o.client}</div>
-                    {o.brokerName && <div className="text-[12px] text-muted-foreground">{o.brokerName}</div>}
-                  </td>
+                  <td className="font-medium">{o.client}</td>
+                  <td className="text-muted-foreground">{o.brokerName || "—"}</td>
                   <td className="text-muted-foreground">{c.productName(o.productId)}</td>
                   <td className="tnum">{o.unit || "—"}</td>
                   <td><Badge tone={oppStageTone[o.stage]} dot>{o.stage}</Badge></td>
