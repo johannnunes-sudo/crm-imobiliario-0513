@@ -7,6 +7,7 @@ import { computeMetrics, goalFor } from "../lib/metrics";
 import { fmtDate, isoDate, MONTHS_FULL, parseISO } from "../lib/format";
 import { Avatar, Badge, Button, Empty, KpiStrip, Panel, PanelHeader, Progress, Segmented, Table, type Tone } from "./ui/kit";
 import { cn } from "../lib/utils";
+import { leadKind } from "../lib/lead";
 
 const VISIT = "Visita à imobiliária";
 const pctTxt = (v: number) => `${Math.round(v * 100)}%`;
@@ -57,6 +58,9 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
       const portfolio = c.agencies.filter((a) => a.managerId === m.id && a.active);
       const touched = new Set(done.map((a) => a.agencyId).filter(Boolean));
       const covered = portfolio.filter((a) => touched.has(a.id)).length;
+      // ações (sem lembretes, sem canceladas) cadastradas com >= 3 dias úteis de antecedência
+      const actions = mine.filter((a) => a.status !== "Cancelada" && leadKind(a) !== "lembrete");
+      const plannedAhead = actions.filter((a) => leadKind(a) === "planejada").length;
       const perDay = new Map<string, Activity[]>();
       for (const a of done) (perDay.get(a.date) ?? perDay.set(a.date, []).get(a.date)!).push(a);
       return {
@@ -67,6 +71,8 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
         dailyGoal: goal ? goal / workdays.length : 0,
         portfolio: portfolio.length,
         covered,
+        actions: actions.length,
+        plannedAhead,
       };
     });
 
@@ -115,7 +121,7 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
 
       <Panel>
         <PanelHeader title={perms.seesAll ? "Plano × realizado por gerente" : "Meu plano × realizado"} subtitle="Visitas a imobiliárias concluídas no mês contra a meta · média diária considera os dias úteis já passados" />
-        <Table head={["Gerente", "Visitas × meta", "Carteira c/ interação", "Na agenda", "Concluídas", "Vencidas", "Cumprimento", "Média/dia útil"]}>
+        <Table head={["Gerente", "Visitas × meta", "Carteira c/ interação", "Planejado c/ antecedência", "Na agenda", "Concluídas", "Vencidas", "Cumprimento", "Média/dia útil"]}>
           {d.rows.map((r) => {
             const vr = r.goal ? r.visits / r.goal : 0;
             const pr = paceRatio(r.visits, r.goal);
@@ -127,6 +133,7 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
                   {r.goal > 0 && <div className={cn("mt-0.5 text-[11px]", toneText[toneFor(pr)])}>{pr >= 1 ? "no ritmo da meta" : `${pctTxt(pr)} do ritmo esperado`}</div>}
                 </td>
                 <td className="tnum"><span className={toneText[toneFor(r.portfolio ? r.covered / r.portfolio : 0)]}>{r.portfolio ? pctTxt(r.covered / r.portfolio) : "—"}</span> <span className="text-[12px] text-muted-foreground">{r.covered}/{r.portfolio}</span></td>
+                <td className="tnum">{r.actions ? (<><span className={cn("font-medium", toneText[toneFor(r.plannedAhead / r.actions)])}>{pctTxt(r.plannedAhead / r.actions)}</span> <span className="text-[12px] text-muted-foreground">{r.plannedAhead}/{r.actions}</span></>) : "—"}</td>
                 <td className="tnum">{r.planned}</td>
                 <td className="tnum font-medium">{r.done.length}</td>
                 <td className={cn("tnum", r.overdue.length && "text-danger")}>{r.overdue.length}</td>

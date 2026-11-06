@@ -57,6 +57,10 @@ export const activities = sqliteTable("activities", {
   notes: text("notes"),
   nextAction: text("next_action"),
   nextDate: text("next_date"),
+  /** "acao" (entra na regra de antecedência) | "lembrete" (próximo passo combinado; fora da regra) */
+  origin: text("origin").notNull().default("acao"),
+  /** dias úteis de antecedência no cadastro — fixado na criação, não muda ao reagendar */
+  leadDays: integer("lead_days"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 

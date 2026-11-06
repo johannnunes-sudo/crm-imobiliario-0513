@@ -9,6 +9,7 @@ import { AttentionPanel } from "../components/blocks";
 import { ActivityDialog } from "../components/forms";
 import { NextStepDialog } from "../components/next-step";
 import { TeamAgenda } from "../components/team-agenda";
+import { LEAD_CHIP, LEAD_DOT, LEAD_LABEL, leadKind, leadOf, type LeadKind } from "../lib/lead";
 import { usePerms } from "../queries/crm";
 import { Badge, Button, Empty, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Table, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
@@ -100,16 +101,24 @@ export default function Agenda() {
             </div>
             <Segmented value={mode} onChange={setMode} options={[{ value: "mes", label: "Mês" }, { value: "semana", label: "Semana" }, { value: "lista", label: "Lista" }]} />
           </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-muted/30 px-5 py-2 text-[11.5px] text-muted-foreground">
+            {(["planejada", "espontanea", "lembrete"] as LeadKind[]).map((k) => (
+              <span key={k} className="inline-flex items-center gap-1.5"><span className={cn("size-2.5 rounded-[3px]", LEAD_DOT[k])} />{LEAD_LABEL[k]}</span>
+            ))}
+            <span className="inline-flex items-center gap-1"><Check className="size-3" strokeWidth={3} /> concluída</span>
+            <span>borda tracejada = ainda planejada</span>
+          </div>
 
           {mode === "lista" ? (
             monthActs.length === 0 ? <Empty title="Nada neste mês" /> : (
-              <Table head={["Data", "Atividade", "Imobiliária", "Gerente", "Situação"]}>
+              <Table head={["Data", "Atividade", "Imobiliária", "Gerente", "Antecedência", "Situação"]}>
                 {monthActs.sort((a, b) => a.date.localeCompare(b.date)).map((a) => (
                   <tr key={a.id} className="cursor-pointer" onClick={() => setSel(a)}>
                     <td className="tnum whitespace-nowrap text-muted-foreground">{fmtDate(a.date)} {a.time}</td>
                     <td className="font-medium">{a.type}</td>
                     <td className="text-muted-foreground">{c.agencyName(a.agencyId)}</td>
                     <td className="text-muted-foreground">{c.manager(a.managerId)?.name.split(" ")[0]}</td>
+                    <td><LeadTag a={a} /></td>
                     <td><Badge tone={statusTone[a.status as keyof typeof statusTone]} dot>{a.status}</Badge></td>
                   </tr>
                 ))}
@@ -154,11 +163,14 @@ export default function Agenda() {
                           <button
                             key={a.id}
                             onClick={() => setSel(a)}
+                            title={`${a.type} · ${LEAD_LABEL[leadKind(a)]} · ${a.status}`}
                             className={cn(
                               "block w-full truncate rounded-[4px] border-l-2 px-1.5 py-[3px] text-left text-[11.5px] leading-tight",
-                              a.status === "Planejada" ? "border-amber bg-amber-soft text-[#7a5410]" : "border-brand bg-brand-soft text-forest",
+                              LEAD_CHIP[leadKind(a)],
+                              a.status === "Planejada" && "border-dashed",
                             )}
                           >
+                            {a.status === "Concluída" && <Check className="mr-0.5 inline size-3 -translate-y-px" strokeWidth={3} />}
                             {a.time && <span className="tnum mr-1 opacity-70">{a.time}</span>}
                             {a.type}
                             {mode === "semana" && <div className="truncate opacity-70">{c.agencyName(a.agencyId)}</div>}
@@ -231,7 +243,7 @@ export default function Agenda() {
       >
         {sel && (
           <div className="space-y-3 text-[13.5px]">
-            <div className="flex items-center gap-2"><Badge tone={statusTone[sel.status as keyof typeof statusTone]} dot>{sel.status}</Badge>{sel.time && <span className="inline-flex items-center gap-1 text-muted-foreground"><Clock className="size-3.5" />{sel.time}</span>}</div>
+            <div className="flex flex-wrap items-center gap-2"><Badge tone={statusTone[sel.status as keyof typeof statusTone]} dot>{sel.status}</Badge><LeadTag a={sel} long />{sel.time && <span className="inline-flex items-center gap-1 text-muted-foreground"><Clock className="size-3.5" />{sel.time}</span>}</div>
             <dl className="grid grid-cols-2 gap-3">
               <div><dt className="text-[12px] text-muted-foreground">Imobiliária</dt><dd>{sel.agencyId ? <Link to={`/imobiliarias/${sel.agencyId}`} className="font-medium hover:text-brand-strong">{c.agencyName(sel.agencyId)}</Link> : "—"}</dd></div>
               <div><dt className="text-[12px] text-muted-foreground">Gerente</dt><dd>{c.manager(sel.managerId)?.name ?? "—"}</dd></div>
@@ -243,5 +255,16 @@ export default function Agenda() {
         )}
       </Modal>
     </>
+  );
+}
+
+function LeadTag({ a, long }: { a: Activity; long?: boolean }) {
+  const k = leadKind(a);
+  const n = leadOf(a);
+  const txt = k === "lembrete" ? "Lembrete" : `${n} dia${n === 1 ? "" : "s"} út.${long ? ` de antecedência · ${k === "planejada" ? "ok" : "em cima da hora"}` : ""}`;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-medium", k === "planejada" ? "bg-brand-soft text-forest" : k === "espontanea" ? "bg-danger-soft text-[#8c2f28]" : "bg-muted text-muted-foreground")}>
+      <span className={cn("size-1.5 rounded-full", LEAD_DOT[k])} />{txt}
+    </span>
   );
 }

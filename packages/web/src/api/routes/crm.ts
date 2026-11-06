@@ -2,6 +2,7 @@ import { z } from "zod";
 import { asc, desc, eq, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
+import { businessDaysBetween, todayIso } from "../../shared/dates";
 import { auth } from "../auth";
 import { ACTIVITY_BY_STAGE, AGENCY_STAGES, DECLINE_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
 import { db } from "../database";
@@ -184,6 +185,7 @@ const activityInput = z.object({
   notes: optStr,
   nextAction: optStr,
   nextDate: optStr,
+  origin: z.enum(["acao", "lembrete"]).optional(),
 });
 async function getActivity(activityId: number) {
   const [row] = await db.select().from(s.activities).where(eq(s.activities.id, activityId));
@@ -198,7 +200,8 @@ export const activities = {
     denyApprover(a);
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
-    const [row] = await db.insert(s.activities).values(input).returning();
+    // antecedência fixada no cadastro (regra: >= 3 dias úteis = planejada)
+    const [row] = await db.insert(s.activities).values({ ...input, leadDays: businessDaysBetween(todayIso(), input.date) }).returning();
     await advanceByActivity({ ...input, status: input.status ?? "Concluída" });
     // Próxima ação vira uma atividade planejada na agenda
     if (input.nextAction && input.nextDate) {
@@ -210,6 +213,8 @@ export const activities = {
         managerId: input.managerId,
         productId: input.productId,
         notes: input.nextAction,
+        origin: "lembrete",
+        leadDays: businessDaysBetween(todayIso(), input.nextDate),
       });
     }
     return row;
@@ -217,7 +222,7 @@ export const activities = {
   update: access.input(id.merge(activityInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
     denyApprover(a);
     assertOwner(a, (await getActivity(id)).managerId);
-    const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
+    const data = { ...(seesAll(a) ? rest : { ...rest, managerId: undefined }), origin: undefined };
     const [row] = await db.update(s.activities).set(data).where(eq(s.activities.id, id)).returning();
     await advanceByActivity(row);
     return row;

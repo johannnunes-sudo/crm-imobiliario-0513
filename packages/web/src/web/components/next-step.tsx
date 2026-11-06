@@ -46,6 +46,7 @@ export function NextStepDialog({ done, agencyName, onClose }: { done: Activity |
         managerId: done.managerId,
         productId: done.productId,
         notes: [s.label, note.trim()].filter(Boolean).join(" · "),
+        origin: "lembrete",
       });
     }
     toast(`${picked.length} lembrete${picked.length > 1 ? "s" : ""} na agenda`);
