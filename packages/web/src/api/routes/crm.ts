@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
 import { businessDaysBetween, todayIso } from "../../shared/dates";
+import { goalForMonth } from "../../shared/goals";
 import { auth } from "../auth";
 import { ACTIVITY_BY_STAGE, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, DECLINE_REASONS, EXIT_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
 import { db } from "../database";
@@ -317,19 +318,42 @@ export const opportunities = {
   }),
 };
 
-// ---------- Metas ----------
+// ---------- Metas (mensais, com histórico) ----------
+const monthStr = z.string().regex(/^\d{4}-\d{2}$/);
 export const goals = {
   list: access.handler(({ context: { access: a } }) =>
     db.select().from(s.goals).where(seesAll(a) ? undefined : or(isNull(s.goals.managerId), eq(s.goals.managerId, a.managerId ?? -1))),
   ),
+  /** Lança/ajusta a meta de um indicador num mês (equipe = managerId null) e registra a alteração */
   set: adminOnly
-    .input(z.object({ managerId: z.number().nullable(), metric: z.string(), target: z.number().min(0) }))
-    .handler(async ({ input }) => {
+    .input(z.object({ month: monthStr, managerId: z.number().nullable(), metric: z.string(), target: z.number().min(0) }))
+    .handler(async ({ input, context }) => {
       const all = await db.select().from(s.goals);
-      const found = all.find((g) => g.metric === input.metric && (g.managerId ?? null) === input.managerId);
-      if (found) return (await db.update(s.goals).set({ target: input.target }).where(eq(s.goals.id, found.id)).returning())[0];
-      return (await db.insert(s.goals).values(input).returning())[0];
+      const old = goalForMonth(all, input.metric, input.managerId, input.month).target;
+      const found = all.find((g) => g.metric === input.metric && (g.managerId ?? null) === input.managerId && g.month === input.month);
+      const stamp = { updatedBy: context.user.name, updatedAt: new Date() };
+      const row = found
+        ? (await db.update(s.goals).set({ target: input.target, ...stamp }).where(eq(s.goals.id, found.id)).returning())[0]
+        : (await db.insert(s.goals).values({ ...input, ...stamp }).returning())[0];
+      if (old !== input.target)
+        await db.insert(s.goalChanges).values({ month: input.month, managerId: input.managerId, metric: input.metric, oldTarget: old, newTarget: input.target, changedBy: context.user.name });
+      return row;
     }),
+  /** Copia as metas vigentes de um mês para outro (só onde o mês de destino ainda não tem meta lançada) */
+  copyMonth: adminOnly.input(z.object({ from: monthStr, to: monthStr })).handler(async ({ input, context }) => {
+    const all = await db.select().from(s.goals);
+    const keys = new Map<string, { managerId: number | null; metric: string }>();
+    for (const g of all) keys.set(`${g.managerId ?? "t"}|${g.metric}`, { managerId: g.managerId ?? null, metric: g.metric });
+    let n = 0;
+    for (const k of keys.values()) {
+      if (all.some((g) => g.metric === k.metric && (g.managerId ?? null) === k.managerId && g.month === input.to)) continue;
+      const t = goalForMonth(all, k.metric, k.managerId, input.from).target;
+      await db.insert(s.goals).values({ ...k, month: input.to, target: t, updatedBy: context.user.name, updatedAt: new Date() });
+      n++;
+    }
+    return { copied: n };
+  }),
+  changes: adminOnly.handler(() => db.select().from(s.goalChanges).orderBy(desc(s.goalChanges.changedAt)).limit(200)),
 };
 
 // ---------- Saídas da carteira ----------

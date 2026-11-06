@@ -44,7 +44,8 @@ export default function Hoje() {
     const visitsMonth = acts.filter((a) => a.type === VISIT && a.status === "Concluída" && a.date.slice(0, 7) === month).length;
     const scopeId = perms.isManager ? (me.data?.managerId ?? null) : c.filters.managerId;
     const teamDivisor = perms.isManager ? Math.max(1, c.managers.length) : 1;
-    const monthGoal = goalFor(c.goals, "Visitas a imobiliárias", scopeId, 1) || Math.round(goalFor(c.goals, "Visitas a imobiliárias", null, 1) / teamDivisor);
+    const curMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    const monthGoal = goalFor(c.goals, "Visitas a imobiliárias", scopeId, curMonth) || Math.round(goalFor(c.goals, "Visitas a imobiliárias", null, curMonth) / teamDivisor);
     const dayGoal = monthGoal ? Math.ceil(monthGoal / workdays(now)) : 0;
     const overdue = acts.filter((a) => a.status === "Planejada" && a.date < today).length;
     const tomorrow = acts.filter((a) => a.status === "Planejada" && a.date > today).sort((a, b) => a.date.localeCompare(b.date));

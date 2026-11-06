@@ -2,14 +2,14 @@
 import { Link } from "wouter";
 import { AlertTriangle, ArrowUpRight } from "lucide-react";
 import { METRICS, type Metric } from "../../shared/constants";
-import { computeMetrics, daysSince, goalFor, health, type Period } from "../lib/metrics";
+import { computeMetrics, daysSince, goalFor, health, type GoalWindow } from "../lib/metrics";
 import { fmtDateShort } from "../lib/format";
 import { healthTone } from "../lib/tones";
 import type { Activity, Agency, Goal, Manager } from "../queries/crm";
 import { Avatar, Badge, Empty, Panel, PanelHeader, Progress } from "./ui/kit";
 import { cn } from "../lib/utils";
 
-export function GoalsPanel({ values, goals, managerId, period, title = "Indicadores x metas", subtitle }: { values: Record<Metric, number>; goals: Goal[]; managerId: number | null; period: Period | number; title?: string; subtitle?: string }) {
+export function GoalsPanel({ values, goals, managerId, period, title = "Indicadores x metas", subtitle }: { values: Record<Metric, number>; goals: Goal[]; managerId: number | null; period: GoalWindow; title?: string; subtitle?: string }) {
   const rows = METRICS.map((m) => {
     const target = goalFor(goals, m, managerId, period);
     return { m, v: values[m], target, ratio: target ? values[m] / target : 0 };

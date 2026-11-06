@@ -1,3 +1,4 @@
+import { goalForMonth } from "../../shared/goals";
 import { COUNTS_PARTICIPANTS, METRICS, METRIC_BY_ACTIVITY, type Metric } from "../../shared/constants";
 import { isoDate, parseISO, daysBetween } from "./format";
 import type { Activity, Agency, Opportunity } from "../queries/crm";
@@ -127,9 +128,33 @@ export function monthlySeries(n: number, fn: (from: string, to: string) => numbe
 
 import type { Goal } from "../queries/crm";
 /** p = período nomeado ou número de meses já calculado (filtro personalizado) */
-export function goalFor(goals: Goal[], metric: string, managerId: number | null, p: Period | number) {
-  const g = goals.find((x) => x.metric === metric && (x.managerId ?? null) === managerId);
-  return Math.round((g?.target ?? 0) * (typeof p === "number" ? p : monthsIn(p)));
+/** Janela de meta: um mês ("YYYY-MM") ou o período do filtro */
+export type GoalWindow = string | { range: [string, string]; period: Period };
+
+/**
+ * Meta de um indicador na janela. Cada mês usa a meta lançada para ele (ou a última anterior).
+ * Períodos nomeados somam meses inteiros (acumulado do ano: até o mês atual; hoje/semana: o mês corrente);
+ * no personalizado, cada mês entra proporcional aos dias do intervalo.
+ */
+export function goalFor(goals: Goal[], metric: string, managerId: number | null, w: GoalWindow) {
+  if (typeof w === "string") return goalForMonth(goals, metric, managerId, w).target;
+  const { range, period } = w;
+  if (period === "Hoje" || period === "Semana atual") return goalForMonth(goals, metric, managerId, isoDate(today()).slice(0, 7)).target;
+  const from = parseISO(range[0]);
+  let to = parseISO(range[1]);
+  if (period === "Acumulado do ano") to = new Date(today().getFullYear(), today().getMonth() + 1, 0);
+  let total = 0;
+  for (let d = new Date(from.getFullYear(), from.getMonth(), 1); d <= to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    const month = isoDate(d).slice(0, 7);
+    let frac = 1;
+    if (period === "Personalizado") {
+      const mStart = d, mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      const s = from > mStart ? from : mStart, e = to < mEnd ? to : mEnd;
+      frac = Math.max(0, (e.getTime() - s.getTime()) / 86_400_000 + 1) / mEnd.getDate();
+    }
+    total += goalForMonth(goals, metric, managerId, month).target * frac;
+  }
+  return Math.round(total);
 }
 
 

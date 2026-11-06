@@ -44,7 +44,7 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
     const elapsed = workdays.filter((w) => w <= todayIso).length;
     const acts = c.scoped.activities.filter((a) => a.date.slice(0, 7) === month);
     const mgrs = c.managers.filter((m) => m.active && (!c.filters.managerId || m.id === c.filters.managerId));
-    const teamVisitGoal = goalFor(c.goals, "Visitas a imobiliárias", null, 1);
+    const teamVisitGoal = goalFor(c.goals, "Visitas a imobiliárias", null, month);
 
     const rows = mgrs.map((m) => {
       const mine = acts.filter((a) => a.managerId === m.id);
@@ -54,7 +54,7 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
       const open = mine.filter((a) => a.status === "Planejada" && a.date >= todayIso);
       const due = done.length + overdue.length + canceled.length;
       const visits = done.filter((a) => a.type === VISIT).length;
-      const goal = goalFor(c.goals, "Visitas a imobiliárias", m.id, 1) || Math.round(teamVisitGoal / Math.max(1, mgrs.length));
+      const goal = goalFor(c.goals, "Visitas a imobiliárias", m.id, month) || Math.round(teamVisitGoal / Math.max(1, mgrs.length));
       const portfolio = c.agencies.filter((a) => a.managerId === m.id && a.active);
       const touched = new Set(done.map((a) => a.agencyId).filter(Boolean));
       const covered = portfolio.filter((a) => touched.has(a.id)).length;
@@ -84,7 +84,7 @@ export function TeamAgenda({ onOpen }: { onOpen: (a: Activity) => void }) {
     const goalScope = c.filters.managerId ?? (mgrs.length === 1 && !perms.seesAll ? mgrs[0].id : null);
     const values = computeMetrics(done, []);
     const mix = METRICS.filter((x) => x !== "Propostas" && x !== "Vendas").map((x) => {
-      const g = goalFor(c.goals, x, goalScope, 1) || (goalScope ? goalFor(c.goals, x, null, 1) : 0);
+      const g = goalFor(c.goals, x, goalScope, month) || (goalScope ? goalFor(c.goals, x, null, month) : 0);
       return { x, v: values[x], g };
     });
     return { workdays, elapsed, rows, done, overdue, portfolio, covered, due, mix, acts };

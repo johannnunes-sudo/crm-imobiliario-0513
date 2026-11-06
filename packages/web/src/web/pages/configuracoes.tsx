@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
-import { LogOut, Plus, ShieldCheck } from "lucide-react";
-import { METRICS, ROLES, ROLE_HINT, ROLE_LABEL, type Role } from "../../shared/constants";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, LogOut, Plus, ShieldCheck } from "lucide-react";
+import { METRICS, ROLES, ROLE_HINT, ROLE_LABEL, type Metric, type Role } from "../../shared/constants";
+import { goalForMonth } from "../../shared/goals";
+import { computeMetrics } from "../lib/metrics";
+import { MONTHS_FULL } from "../lib/format";
 import { useCrm } from "../hooks/use-crm";
 import { EXIT_STATUS_LABEL, EXIT_TONE, ExitDecisionDialog } from "../components/agency-exit";
 import type { AgencyExit } from "../queries/crm";
-import { useResetPassword, useExits, useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
+import { useCopyGoals, useGoalChanges, useResetPassword, useExits, useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
 import { authClient, signOut } from "../lib/auth";
-import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Select, Tabs, useToast } from "../components/ui/kit";
+import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Select, Table, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
 type Tab = "usuarios" | "saidas" | "metas" | "gerentes" | "conta";
@@ -265,45 +268,129 @@ function NewUserModal({ open, onClose }: { open: boolean; onClose: () => void })
 function GoalsEditor() {
   const c = useCrm();
   const [scope, setScope] = useState<number | null>(null);
+  const [cursor, setCursor] = useState(() => new Date());
   const setGoal = useSetGoal();
+  const copy = useCopyGoals();
+  const changes = useGoalChanges();
   const toast = useToast();
-  const current = (m: string) => c.goals.find((g) => g.metric === m && (g.managerId ?? null) === scope)?.target ?? 0;
+  const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const month = ym(cursor);
+  const prevMonth = ym(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
+  const label = (m: string) => `${MONTHS_FULL[Number(m.slice(5)) - 1]} ${m.slice(0, 4)}`;
+  const resolved = (m: Metric) => goalForMonth(c.goals, m, scope, month);
+  const inherited = METRICS.some((m) => resolved(m).from !== month);
+  const scopeName = scope ? c.managers.find((x) => x.id === scope)?.name : "Equipe";
+
+  // histórico: últimos 6 meses até o mês escolhido, meta × realizado do escopo
+  const hist = useMemo(() => {
+    const months = Array.from({ length: 6 }, (_, k) => ym(new Date(cursor.getFullYear(), cursor.getMonth() - 5 + k, 1)));
+    return months.map((m) => {
+      const acts = c.activities.filter((a) => a.status === "Concluída" && a.date.slice(0, 7) === m && (!scope || a.managerId === scope));
+      const opps = c.opportunities.filter((o) => o.date.slice(0, 7) === m && (!scope || o.managerId === scope));
+      return { m, values: computeMetrics(acts, opps) };
+    });
+  }, [c.activities, c.opportunities, cursor, scope]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
-      <Panel className="h-fit p-2">
-        {[{ id: null as number | null, name: "Equipe (consolidado)", color: "#1F3A2E" }, ...c.managers].map((m) => (
-          <button
-            key={m.id ?? "team"}
-            onClick={() => setScope(m.id)}
-            className={cn("flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors", scope === m.id ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground")}
-          >
-            <Avatar name={m.id ? m.name : "Equipe Porto"} color={m.color} size={24} />
-            <span className="truncate">{m.name}</span>
-          </button>
-        ))}
-      </Panel>
-      <Panel>
-        <PanelHeader title="Metas mensais" subtitle="Valores por mês. Em trimestres e acumulados, a meta é multiplicada pelo número de meses. Atividades planejadas não contam até serem concluídas." />
-        <div className="grid gap-x-6 px-5 pb-5 sm:grid-cols-2">
-          {METRICS.map((m) => (
-            <GoalRow
-              key={`${scope}-${m}`}
-              label={m}
-              value={current(m)}
-              onSave={async (target) => {
-                await setGoal.mutateAsync({ managerId: scope, metric: m, target });
-                toast(`Meta de ${m.toLowerCase()} salva`);
-              }}
-            />
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+        <Panel className="h-fit p-2">
+          {[{ id: null as number | null, name: "Equipe (consolidado)", color: "#1F3A2E" }, ...c.managers].map((m) => (
+            <button
+              key={m.id ?? "team"}
+              onClick={() => setScope(m.id)}
+              className={cn("flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] transition-colors", scope === m.id ? "bg-muted font-medium" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground")}
+            >
+              <Avatar name={m.id ? m.name : "Equipe Porto"} color={m.color} size={24} />
+              <span className="truncate">{m.name}</span>
+            </button>
           ))}
-        </div>
+        </Panel>
+        <Panel>
+          <PanelHeader
+            title={`Metas de ${label(month)} · ${scopeName}`}
+            subtitle="Cada mês tem sua meta. Mês sem meta lançada usa a última definida. Os painéis medem cada mês contra a meta dele."
+            right={
+              <div className="flex items-center gap-1">
+                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="rounded-md p-1.5 hover:bg-muted" aria-label="Mês anterior"><ChevronLeft className="size-4" /></button>
+                <span className="w-[120px] text-center text-[13px] font-medium">{label(month)}</span>
+                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="rounded-md p-1.5 hover:bg-muted" aria-label="Próximo mês"><ChevronRight className="size-4" /></button>
+              </div>
+            }
+          />
+          {inherited && (
+            <div className="mx-5 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-soft px-3 py-2 text-[12.5px] text-[#7a5410]">
+              <span>Algumas metas deste mês estão herdadas de meses anteriores (marcadas abaixo). Edite um valor para fixá-lo neste mês.</span>
+              <Button size="sm" loading={copy.isPending} onClick={async () => { const r = await copy.mutateAsync({ from: prevMonth, to: month }); toast(r.copied ? `${r.copied} metas copiadas de ${label(prevMonth)}` : "Este mês já tem todas as metas lançadas"); }}>
+                Copiar de {label(prevMonth)}
+              </Button>
+            </div>
+          )}
+          <div className="grid gap-x-6 px-5 pb-5 sm:grid-cols-2">
+            {METRICS.map((m) => {
+              const r = resolved(m);
+              return (
+                <GoalRow
+                  key={`${scope}-${month}-${m}`}
+                  label={m}
+                  note={r.from === month ? undefined : r.from ? `herdada de ${label(r.from)}` : r.from === null ? "meta base" : "sem meta"}
+                  value={r.target}
+                  onSave={async (target) => {
+                    await setGoal.mutateAsync({ month, managerId: scope, metric: m, target });
+                    toast(`Meta de ${m.toLowerCase()} em ${label(month)} salva`);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </Panel>
+      </div>
+
+      <Panel>
+        <PanelHeader title={`Histórico · ${scopeName}`} subtitle="Meta e realizado dos últimos 6 meses (até o mês escolhido) · realizado / meta" />
+        <Table head={["Indicador", ...hist.map((h) => label(h.m).replace(/ \d{4}$/, ""))]}>
+          {METRICS.map((m) => (
+            <tr key={m}>
+              <td className="whitespace-nowrap">{m}</td>
+              {hist.map((h) => {
+                const g = goalForMonth(c.goals, m, scope, h.m).target;
+                const v = h.values[m];
+                const r = g ? v / g : 0;
+                return (
+                  <td key={h.m} className="tnum whitespace-nowrap">
+                    <span className={cn("font-medium", !g || h.m > ym(new Date()) ? "text-muted-foreground" : r >= 1 ? "text-brand-strong" : r >= 0.7 ? "text-[#a06c10]" : "text-danger")}>{v}</span>
+                    <span className="text-[12px] text-muted-foreground"> / {g || "—"}</span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </Table>
+      </Panel>
+
+      <Panel>
+        <PanelHeader title="Alterações de metas" subtitle="Quem mudou, quando e de quanto para quanto" />
+        {(changes.data ?? []).length === 0 ? <p className="px-5 pb-5 text-[13px] text-muted-foreground">Nenhuma alteração registrada ainda.</p> : (
+          <Table head={["Quando", "Mês", "Escopo", "Indicador", "De", "Para", "Por"]}>
+            {(changes.data ?? []).slice(0, 25).map((x) => (
+              <tr key={x.id}>
+                <td className="tnum whitespace-nowrap text-muted-foreground">{new Date(x.changedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</td>
+                <td className="whitespace-nowrap">{label(x.month)}</td>
+                <td>{x.managerId ? c.managers.find((m) => m.id === x.managerId)?.name : "Equipe"}</td>
+                <td>{x.metric}</td>
+                <td className="tnum text-muted-foreground">{x.oldTarget ?? "—"}</td>
+                <td className="tnum font-medium">{x.newTarget}</td>
+                <td className="text-muted-foreground">{x.changedBy}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
       </Panel>
     </div>
   );
 }
 
-function GoalRow({ label, value, onSave }: { label: string; value: number; onSave: (v: number) => Promise<void> }) {
+function GoalRow({ label, value, note, onSave }: { label: string; value: number; note?: string; onSave: (v: number) => Promise<void> }) {
   const [v, setV] = useState(String(value));
   useEffect(() => setV(String(value)), [value]);
   const commit = () => {
@@ -312,7 +399,7 @@ function GoalRow({ label, value, onSave }: { label: string; value: number; onSav
   };
   return (
     <div className="flex items-center justify-between gap-4 border-t border-border py-3">
-      <span className="text-[13.5px]">{label}</span>
+      <span className="text-[13.5px]">{label}{note && <span className="ml-2 rounded-full bg-amber-soft px-2 py-0.5 text-[11px] text-[#7a5410]">{note}</span>}</span>
       <Input className="tnum h-8 w-24 text-right" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
     </div>
   );

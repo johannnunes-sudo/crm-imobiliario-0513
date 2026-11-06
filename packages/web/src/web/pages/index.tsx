@@ -73,7 +73,7 @@ export default function Consolidado() {
     });
 
     const goalsFunnel = METRICS.map((m) => {
-      const goal = goalFor(c.goals, m, c.filters.managerId, c.filters.months);
+      const goal = goalFor(c.goals, m, c.filters.managerId, { range: c.filters.range, period: c.filters.period });
       return { m, v: values[m], goal, ratio: goal ? values[m] / goal : 0 };
     });
     const maxGoal = Math.max(1, ...goalsFunnel.map((f) => Math.max(f.v, f.goal)));
@@ -208,7 +208,7 @@ export default function Consolidado() {
         <Panel>
           <PanelHeader
             title="Funil consolidado · Meta × Realizado"
-            subtitle={`Metas ${c.filters.managerId ? "individuais" : "da equipe"} proporcionais ao período (${c.filters.months.toLocaleString("pt-BR")} ${c.filters.months > 1 ? "meses" : "mês"})`}
+            subtitle={`Metas ${c.filters.managerId ? "individuais" : "da equipe"} do período (soma das metas de cada mês)`}
           />
           <div className="space-y-3.5 px-5 pb-5">
             {data.goalsFunnel.map((f) => (

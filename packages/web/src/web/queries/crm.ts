@@ -192,3 +192,10 @@ export function useReactivateAgency() {
   return useMutation(orpc.exits.reactivate.mutationOptions({ onSuccess: inv }));
 }
 export const useResetPassword = () => useMutation(orpc.users.resetPassword.mutationOptions());
+
+// ---------- Metas mensais ----------
+export function useCopyGoals() {
+  const qc = useQueryClient();
+  return useMutation(orpc.goals.copyMonth.mutationOptions({ onSuccess: () => { qc.invalidateQueries({ queryKey: orpc.goals.key() }); } }));
+}
+export const useGoalChanges = (enabled = true) => useQuery(orpc.goals.changes.queryOptions({ ...stale, enabled }));

@@ -100,6 +100,22 @@ export const goals = sqliteTable("goals", {
   managerId: integer("manager_id").references(() => managers.id),
   metric: text("metric").notNull(),
   target: integer("target").notNull(),
+  /** mês de competência (YYYY-MM). Vazio = meta base antiga, usada só quando não há meta mensal anterior */
+  month: text("month"),
+  updatedBy: text("updated_by"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
+});
+
+/** Histórico de alterações de metas: quem mudou, quando, de quanto para quanto */
+export const goalChanges = sqliteTable("goal_changes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(),
+  managerId: integer("manager_id").references(() => managers.id),
+  metric: text("metric").notNull(),
+  oldTarget: integer("old_target"),
+  newTarget: integer("new_target").notNull(),
+  changedBy: text("changed_by").notNull(),
+  changedAt: integer("changed_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 /**
