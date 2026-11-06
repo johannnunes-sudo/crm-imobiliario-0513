@@ -72,7 +72,7 @@ export default function Gestor() {
       />
 
       <div className="mt-5">
-        <GoalsPanel values={d.values} goals={c.goals} managerId={mid} period={c.filters.period} title="Realizado x metas individuais" subtitle="Metas mensais configuráveis em Configurações" />
+        <GoalsPanel values={d.values} goals={c.goals} managerId={mid} period={c.filters.months} title="Realizado x metas individuais" subtitle="Metas mensais configuráveis em Configurações" />
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.5fr_1fr]">

@@ -96,7 +96,7 @@ export default function Relatorios() {
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `relatorio-${view}-${c.filters.period.toLowerCase().replace(/\s+/g, "-")}.csv`;
+    a.download = `relatorio-${view}-${c.filters.label.replace(/[^\p{L}\d]+/gu, "-")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

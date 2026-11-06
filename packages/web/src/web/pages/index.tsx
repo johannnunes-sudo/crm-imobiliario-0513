@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Plus } from "lucide-react";
 import { METRICS, type Metric } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
-import { computeMetrics, goalFor, inRange, isProposal, isSale, monthlySeries, monthsIn, daysSince } from "../lib/metrics";
+import { computeMetrics, goalFor, inRange, isProposal, isSale, monthlySeries, daysSince } from "../lib/metrics";
 import { brlShort, MONTHS, num, pct } from "../lib/format";
 import { GlobalFilters } from "../components/filters";
 import { Bars, Legend } from "../components/charts";
@@ -73,7 +73,7 @@ export default function Consolidado() {
     });
 
     const goalsFunnel = METRICS.map((m) => {
-      const goal = goalFor(c.goals, m, c.filters.managerId, c.filters.period);
+      const goal = goalFor(c.goals, m, c.filters.managerId, c.filters.months);
       return { m, v: values[m], goal, ratio: goal ? values[m] / goal : 0 };
     });
     const maxGoal = Math.max(1, ...goalsFunnel.map((f) => Math.max(f.v, f.goal)));
@@ -128,7 +128,7 @@ export default function Consolidado() {
     <>
       <PageHeader
         title="Consolidado"
-        subtitle={`Visão geral da operação comercial · ${c.filters.period.toLowerCase()}`}
+        subtitle={`Visão geral da operação comercial · ${c.filters.label}`}
         actions={
           <>
             <GlobalFilters />
@@ -208,7 +208,7 @@ export default function Consolidado() {
         <Panel>
           <PanelHeader
             title="Funil consolidado · Meta × Realizado"
-            subtitle={`Metas ${c.filters.managerId ? "individuais" : "da equipe"} proporcionais ao período (${monthsIn(c.filters.period)} ${monthsIn(c.filters.period) > 1 ? "meses" : "mês"})`}
+            subtitle={`Metas ${c.filters.managerId ? "individuais" : "da equipe"} proporcionais ao período (${c.filters.months.toLocaleString("pt-BR")} ${c.filters.months > 1 ? "meses" : "mês"})`}
           />
           <div className="space-y-3.5 px-5 pb-5">
             {data.goalsFunnel.map((f) => (

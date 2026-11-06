@@ -9,7 +9,7 @@ import type { Activity, Agency, Goal, Manager } from "../queries/crm";
 import { Avatar, Badge, Empty, Panel, PanelHeader, Progress } from "./ui/kit";
 import { cn } from "../lib/utils";
 
-export function GoalsPanel({ values, goals, managerId, period, title = "Indicadores x metas", subtitle }: { values: Record<Metric, number>; goals: Goal[]; managerId: number | null; period: Period; title?: string; subtitle?: string }) {
+export function GoalsPanel({ values, goals, managerId, period, title = "Indicadores x metas", subtitle }: { values: Record<Metric, number>; goals: Goal[]; managerId: number | null; period: Period | number; title?: string; subtitle?: string }) {
   const rows = METRICS.map((m) => {
     const target = goalFor(goals, m, managerId, period);
     return { m, v: values[m], target, ratio: target ? values[m] / target : 0 };

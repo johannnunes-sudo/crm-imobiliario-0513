@@ -11,6 +11,7 @@ export const PERIODS = [
   "Trimestre anterior",
   "Acumulado do ano",
   "Últimos 6 meses",
+  "Personalizado",
 ] as const;
 export type Period = (typeof PERIODS)[number];
 
@@ -44,14 +45,16 @@ export function periodRange(p: Period, ref = today()): [string, string] {
       return [isoDate(new Date(y, 0, 1)), end(new Date(y, 11, 31))];
     case "Últimos 6 meses":
       return [isoDate(new Date(y, m - 5, 1)), end(new Date(y, m + 1, 0))];
+    case "Personalizado":
+      return [isoDate(new Date(y, m, 1)), end(ref)]; // padrão; o intervalo real vem do filtro
   }
 }
 
 /** Período imediatamente anterior de mesma natureza (para comparação) */
-export function previousRange(p: Period, ref = today()): [string, string] {
+export function previousRange(p: Period, ref = today(), custom?: [string, string]): [string, string] {
   const map: Partial<Record<Period, Period>> = { "Mês atual": "Mês anterior", "Trimestre atual": "Trimestre anterior" };
   if (map[p]) return periodRange(map[p]!, ref);
-  const [f, t] = periodRange(p, ref);
+  const [f, t] = p === "Personalizado" && custom ? custom : periodRange(p, ref);
   const len = parseISO(t).getTime() - parseISO(f).getTime() + 86_400_000;
   const nt = new Date(parseISO(f).getTime() - 86_400_000);
   const nf = new Date(nt.getTime() - len + 86_400_000);
@@ -59,7 +62,12 @@ export function previousRange(p: Period, ref = today()): [string, string] {
 }
 
 /** Quantos meses o período cobre (para escalar metas mensais) */
-export function monthsIn(p: Period) {
+export function monthsIn(p: Period, custom?: [string, string]) {
+  if (p === "Personalizado" && custom) {
+    // metas mensais proporcionais aos dias do intervalo (mínimo de 1 dia)
+    const days = Math.max(1, Math.round((parseISO(custom[1]).getTime() - parseISO(custom[0]).getTime()) / 86_400_000) + 1);
+    return Math.round((days / 30.4) * 10) / 10;
+  }
   if (p === "Hoje" || p === "Semana atual") return 1;
   if (p.startsWith("Trimestre")) return 3;
   if (p === "Acumulado do ano") return today().getMonth() + 1;
@@ -118,9 +126,10 @@ export function monthlySeries(n: number, fn: (from: string, to: string) => numbe
 }
 
 import type { Goal } from "../queries/crm";
-export function goalFor(goals: Goal[], metric: string, managerId: number | null, p: Period) {
+/** p = período nomeado ou número de meses já calculado (filtro personalizado) */
+export function goalFor(goals: Goal[], metric: string, managerId: number | null, p: Period | number) {
   const g = goals.find((x) => x.metric === metric && (x.managerId ?? null) === managerId);
-  return (g?.target ?? 0) * monthsIn(p);
+  return Math.round((g?.target ?? 0) * (typeof p === "number" ? p : monthsIn(p)));
 }
 
 
