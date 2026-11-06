@@ -41,7 +41,11 @@ export function useCrmData() {
 
 function useInvalidate(key: readonly unknown[]) {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: key });
+  return () => {
+    qc.invalidateQueries({ queryKey: key });
+    // atividades e negociações podem avançar a etapa da imobiliária no servidor
+    qc.invalidateQueries({ queryKey: orpc.agencies.key() });
+  };
 }
 
 export function useCreateActivity() {
@@ -60,7 +64,7 @@ export function useUpdateActivity() {
         return { prev };
       },
       onError: (_e, _i, ctx) => qc.setQueryData(key, ctx?.prev),
-      onSettled: () => qc.invalidateQueries({ queryKey: orpc.activities.key() }),
+      onSettled: () => { qc.invalidateQueries({ queryKey: orpc.activities.key() }); qc.invalidateQueries({ queryKey: orpc.agencies.key() }); },
     }),
   );
 }
@@ -85,7 +89,7 @@ export function useUpdateOpportunity() {
         return { prev };
       },
       onError: (_e, _i, ctx) => qc.setQueryData(key, ctx?.prev),
-      onSettled: () => qc.invalidateQueries({ queryKey: orpc.opportunities.key() }),
+      onSettled: () => { qc.invalidateQueries({ queryKey: orpc.opportunities.key() }); qc.invalidateQueries({ queryKey: orpc.agencies.key() }); },
     }),
   );
 }

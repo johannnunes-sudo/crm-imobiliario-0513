@@ -3,7 +3,7 @@ import { asc, desc, eq, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
 import { auth } from "../auth";
-import { DECLINE_REASONS, ROLES, type Role } from "../../shared/constants";
+import { ACTIVITY_BY_STAGE, AGENCY_STAGES, DECLINE_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
 import { db } from "../database";
 import * as s from "../database/schema";
 
@@ -141,6 +141,22 @@ export const agencies = {
   }),
 };
 
+// ---------- Avanço automático da carteira ----------
+/** Etapa da carteira correspondente a cada tipo de atividade (envio de material e eventos não mexem na etapa) */
+const STAGE_BY_ACTIVITY = Object.fromEntries(Object.entries(ACTIVITY_BY_STAGE).map(([stage, type]) => [type, stage])) as Record<string, AgencyStage>;
+const stageIdx = (s: string) => AGENCY_STAGES.indexOf(s as AgencyStage);
+
+/** Regra "o card só avança, nunca volta": move a imobiliária para a etapa alvo se ela estiver à frente da atual. */
+async function advanceAgency(agencyId: number | null | undefined, target: AgencyStage | undefined) {
+  if (!agencyId || !target) return;
+  const [ag] = await db.select({ stage: s.agencies.stage }).from(s.agencies).where(eq(s.agencies.id, agencyId));
+  if (ag && stageIdx(target) > stageIdx(ag.stage)) await db.update(s.agencies).set({ stage: target }).where(eq(s.agencies.id, agencyId));
+}
+const advanceByActivity = (a: { agencyId?: number | null; type?: string | null; status?: string | null }) =>
+  a.status === "Concluída" && a.type ? advanceAgency(a.agencyId, STAGE_BY_ACTIVITY[a.type]) : undefined;
+const advanceByOpportunity = (o: { agencyId?: number | null; stage?: string | null }) =>
+  advanceAgency(o.agencyId, o.stage === "Venda" ? "Venda" : o.stage === "Proposta" || o.stage === "Aguardando assinatura" ? "Proposta" : undefined);
+
 // ---------- Atividades ----------
 const activityInput = z.object({
   type: z.string(),
@@ -171,6 +187,7 @@ export const activities = {
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
     const [row] = await db.insert(s.activities).values(input).returning();
+    await advanceByActivity({ ...input, status: input.status ?? "Concluída" });
     // Próxima ação vira uma atividade planejada na agenda
     if (input.nextAction && input.nextDate) {
       await db.insert(s.activities).values({
@@ -189,7 +206,9 @@ export const activities = {
     denyApprover(a);
     assertOwner(a, (await getActivity(id)).managerId);
     const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
-    return (await db.update(s.activities).set(data).where(eq(s.activities.id, id)).returning())[0];
+    const [row] = await db.update(s.activities).set(data).where(eq(s.activities.id, id)).returning();
+    await advanceByActivity(row);
+    return row;
   }),
   remove: access.input(id).handler(async ({ input, context: { access: a } }) => {
     denyApprover(a);
@@ -240,7 +259,9 @@ export const opportunities = {
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
     assertDeclineReason(input);
-    return (await db.insert(s.opportunities).values(input).returning())[0];
+    const [row] = await db.insert(s.opportunities).values(input).returning();
+    await advanceByOpportunity(row);
+    return row;
   }),
   // aprovador pode atualizar negociações (aprovação de vendas)
   update: access.input(id.merge(oppInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
@@ -251,7 +272,9 @@ export const opportunities = {
     const changingReason = rest.declineReason !== undefined && rest.declineReason !== cur.declineReason;
     if (entering || changingReason) assertDeclineReason({ ...cur, ...rest });
     const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
-    return (await db.update(s.opportunities).set(data).where(eq(s.opportunities.id, id)).returning())[0];
+    const [row] = await db.update(s.opportunities).set(data).where(eq(s.opportunities.id, id)).returning();
+    await advanceByOpportunity(row);
+    return row;
   }),
   remove: access.input(id).handler(async ({ input, context: { access: a } }) => {
     denyApprover(a);
