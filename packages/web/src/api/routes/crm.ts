@@ -146,14 +146,26 @@ export const agencies = {
 const STAGE_BY_ACTIVITY = Object.fromEntries(Object.entries(ACTIVITY_BY_STAGE).map(([stage, type]) => [type, stage])) as Record<string, AgencyStage>;
 const stageIdx = (s: string) => AGENCY_STAGES.indexOf(s as AgencyStage);
 
-/** Regra "o card só avança, nunca volta": move a imobiliária para a etapa alvo se ela estiver à frente da atual. */
-async function advanceAgency(agencyId: number | null | undefined, target: AgencyStage | undefined) {
+/**
+ * Regra da carteira:
+ * - no dia a dia o card só avança (atividade de etapa à frente move a imobiliária; igual/anterior não mexe);
+ * - quando o ciclo fecha (imobiliária em Proposta/Venda sem nenhuma negociação em aberto — venda concluída
+ *   ou cliente declinou), a próxima atividade concluída define a nova etapa, mesmo que seja para trás.
+ */
+async function advanceAgency(agencyId: number | null | undefined, target: AgencyStage | undefined, allowRestart = false) {
   if (!agencyId || !target) return;
   const [ag] = await db.select({ stage: s.agencies.stage }).from(s.agencies).where(eq(s.agencies.id, agencyId));
-  if (ag && stageIdx(target) > stageIdx(ag.stage)) await db.update(s.agencies).set({ stage: target }).where(eq(s.agencies.id, agencyId));
+  if (!ag || ag.stage === target) return;
+  let move = stageIdx(target) > stageIdx(ag.stage);
+  if (!move && allowRestart && (ag.stage === "Proposta" || ag.stage === "Venda")) {
+    const opps = await db.select({ stage: s.opportunities.stage }).from(s.opportunities).where(eq(s.opportunities.agencyId, agencyId));
+    const open = opps.some((o) => o.stage !== "Venda" && o.stage !== "Declinou");
+    move = !open; // ciclo fechado: a rota recomeça
+  }
+  if (move) await db.update(s.agencies).set({ stage: target }).where(eq(s.agencies.id, agencyId));
 }
 const advanceByActivity = (a: { agencyId?: number | null; type?: string | null; status?: string | null }) =>
-  a.status === "Concluída" && a.type ? advanceAgency(a.agencyId, STAGE_BY_ACTIVITY[a.type]) : undefined;
+  a.status === "Concluída" && a.type ? advanceAgency(a.agencyId, STAGE_BY_ACTIVITY[a.type], true) : undefined;
 const advanceByOpportunity = (o: { agencyId?: number | null; stage?: string | null }) =>
   advanceAgency(o.agencyId, o.stage === "Venda" ? "Venda" : o.stage === "Proposta" || o.stage === "Aguardando assinatura" ? "Proposta" : undefined);
 
