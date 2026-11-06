@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Building, Handshake, GraduationCap, HardHat, UserRound, Headset, FileSignature, BadgeDollarSign } from "lucide-react";
+import { Building, Handshake, GraduationCap, HardHat, UserRound, Headset, FileSignature, BadgeDollarSign, Send, Megaphone } from "lucide-react";
 import { ACTIVITY_TYPES } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
-import { useCreateActivity } from "../queries/crm";
+import { useCreateActivity, type Activity } from "../queries/crm";
+import { NextStepDialog } from "../components/next-step";
 import { isoDate } from "../lib/format";
 import { ActivityFields, OpportunityDialog, emptyActivity, type ActivityDraft } from "../components/forms";
 import { ActivityFeed } from "../components/blocks";
@@ -16,6 +17,8 @@ const ICONS: Record<string, typeof Building> = {
   Treinamento: GraduationCap,
   "Visita à obra": HardHat,
   "Atendimento ao cliente": UserRound,
+  "Envio de material / Follow-up": Send,
+  "Ação de vendas / Evento": Megaphone,
 };
 
 export default function Registro() {
@@ -23,14 +26,17 @@ export default function Registro() {
   const [f, setF] = useState<ActivityDraft>(emptyActivity());
   const [opp, setOpp] = useState<null | "Proposta" | "Venda">(null);
   const create = useCreateActivity();
+  const [doneAct, setDoneAct] = useState<Activity | null>(null);
   const toast = useToast();
   const set = <K extends keyof ActivityDraft>(k: K, v: ActivityDraft[K]) => setF((x) => ({ ...x, [k]: v }));
 
   if (c.isLoading) return <PageSkeleton />;
 
   const save = async (again: boolean) => {
-    await create.mutateAsync({ ...f, time: null, nextAction: f.nextAction || null, nextDate: f.nextDate || null });
+    const row = await create.mutateAsync({ ...f, time: null, nextAction: f.nextAction || null, nextDate: f.nextDate || null });
     toast(f.nextDate ? "Atividade registrada e próxima ação agendada" : "Atividade registrada");
+    // sem próxima ação definida: oferece os lembretes rápidos
+    if (!f.nextDate && (f.status ?? "Concluída") === "Concluída") setDoneAct(row as Activity);
     setF(again ? emptyActivity({ type: f.type, agencyId: f.agencyId, managerId: f.managerId, date: f.date, productId: f.productId }) : emptyActivity());
   };
 
@@ -92,6 +98,7 @@ export default function Registro() {
           />
         </div>
       </div>
+      <NextStepDialog done={doneAct} agencyName={doneAct?.agencyId ? c.agencyName(doneAct.agencyId) : undefined} onClose={() => setDoneAct(null)} />
       <OpportunityDialog open={!!opp} onClose={() => setOpp(null)} initial={null} preset={{ stage: opp ?? "Proposta", agencyId: f.agencyId, managerId: f.managerId, productId: f.productId }} />
     </>
   );

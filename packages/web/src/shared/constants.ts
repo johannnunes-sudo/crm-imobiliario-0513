@@ -30,6 +30,17 @@ export const ACTIVITY_TYPES = [
   "Treinamento",
   "Visita à obra",
   "Atendimento ao cliente",
+  "Envio de material / Follow-up",
+  "Ação de vendas / Evento",
+] as const;
+
+/** Atalhos de "próximo passo" oferecidos ao concluir uma atividade (dias = prazo sugerido) */
+export const NEXT_STEPS = [
+  { label: "Enviar material", type: "Envio de material / Follow-up", days: 1 },
+  { label: "Agendar treinamento", type: "Treinamento", days: 7 },
+  { label: "Nova visita", type: "Visita à imobiliária", days: 15 },
+  { label: "Levar corretores à obra", type: "Visita à obra", days: 10 },
+  { label: "Retornar contato", type: "Atendimento a corretor", days: 3 },
 ] as const;
 
 export const ACTIVITY_STATUS = ["Planejada", "Concluída", "Cancelada"] as const;

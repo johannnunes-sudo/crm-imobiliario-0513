@@ -7,7 +7,10 @@ import { fmtDate, isoDate, MONTHS_FULL, parseISO } from "../lib/format";
 import { GlobalFilters } from "../components/filters";
 import { AttentionPanel } from "../components/blocks";
 import { ActivityDialog } from "../components/forms";
-import { Badge, Button, Empty, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Table, useToast } from "../components/ui/kit";
+import { NextStepDialog } from "../components/next-step";
+import { TeamAgenda } from "../components/team-agenda";
+import { usePerms } from "../queries/crm";
+import { Badge, Button, Empty, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Table, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
 const WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -19,6 +22,9 @@ export default function Agenda() {
   const [cursor, setCursor] = useState(() => new Date());
   const [newDate, setNewDate] = useState<string | null>(null);
   const [sel, setSel] = useState<Activity | null>(null);
+  const [doneAct, setDoneAct] = useState<Activity | null>(null);
+  const perms = usePerms();
+  const [view, setView] = useState<"minha" | "equipe">("minha");
   const update = useUpdateActivity();
   const remove = useRemoveActivity();
   const toast = useToast();
@@ -71,6 +77,18 @@ export default function Agenda() {
         }
       />
 
+      <div className="mb-5">
+        <Tabs
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "minha", label: perms.seesAll ? "Agenda" : "Minha agenda" },
+            { value: "equipe", label: perms.seesAll ? "Agenda da equipe" : "Meu desempenho" },
+          ]}
+        />
+      </div>
+
+      {view === "equipe" ? <TeamAgenda onOpen={setSel} /> : (
       <div className="grid gap-5 xl:grid-cols-[1fr_320px]">
         <Panel className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
@@ -182,6 +200,9 @@ export default function Agenda() {
           <AttentionPanel agencies={c.scoped.agencies} lastMap={c.lastMap} managers={c.managers} limit={4} />
         </div>
       </div>
+      )}
+
+      <NextStepDialog done={doneAct} agencyName={doneAct?.agencyId ? c.agencyName(doneAct.agencyId) : undefined} onClose={() => setDoneAct(null)} />
 
       <ActivityDialog open={!!newDate} onClose={() => setNewDate(null)} preset={{ date: newDate ?? todayIso, status: newDate && newDate < todayIso ? "Concluída" : "Planejada" }} />
 
@@ -200,7 +221,7 @@ export default function Agenda() {
               {sel.status === "Planejada" && (
                 <>
                   <Button onClick={() => { update.mutate({ id: sel.id, status: "Cancelada" }); toast("Atividade cancelada"); setSel(null); }}><X className="size-3.5" /> Cancelar</Button>
-                  <Button variant="primary" onClick={() => { update.mutate({ id: sel.id, status: "Concluída" }); toast("Concluída · contabilizada nos indicadores"); setSel(null); }}><Check className="size-3.5" /> Marcar concluída</Button>
+                  <Button variant="primary" onClick={() => { update.mutate({ id: sel.id, status: "Concluída" }); toast("Concluída · contabilizada nos indicadores"); setDoneAct(sel); setSel(null); }}><Check className="size-3.5" /> Marcar concluída</Button>
                 </>
               )}
               {sel.status !== "Planejada" && <Button onClick={() => setSel(null)}>Fechar</Button>}
