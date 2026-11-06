@@ -429,6 +429,15 @@ export const users = {
       await db.insert(s.profiles).values({ userId: res.user.id, role: input.role, managerId }).onConflictDoUpdate({ target: s.profiles.userId, set: { role: input.role, managerId } });
       return { id: res.user.id };
     }),
+  /** ADM define uma nova senha provisória (não há envio de e-mail) e encerra as sessões abertas do usuário */
+  resetPassword: adminOnly.input(z.object({ userId: z.string(), password: z.string().min(8) })).handler(async ({ input }) => {
+    const ctx = await auth.$context;
+    const [u] = await db.select().from(s.user).where(eq(s.user.id, input.userId));
+    if (!u) throw new ORPCError("NOT_FOUND", { message: "Usuário não encontrado" });
+    await ctx.internalAdapter.updatePassword(input.userId, await ctx.password.hash(input.password));
+    await db.delete(s.session).where(eq(s.session.userId, input.userId));
+    return { ok: true };
+  }),
   update: adminOnly
     .input(z.object({ userId: z.string(), role: roleEnum.optional(), managerId: optNum, active: z.boolean().optional() }))
     .handler(async ({ input, context }) => {

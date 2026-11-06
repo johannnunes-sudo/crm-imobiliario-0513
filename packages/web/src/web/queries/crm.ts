@@ -191,3 +191,4 @@ export function useReactivateAgency() {
   const inv = useExitInvalidate();
   return useMutation(orpc.exits.reactivate.mutationOptions({ onSuccess: inv }));
 }
+export const useResetPassword = () => useMutation(orpc.users.resetPassword.mutationOptions());

@@ -8,8 +8,8 @@ export default function LoginPage() {
   const { data: session } = authClient.useSession();
   const [, nav] = useLocation();
   const [mode, setMode] = useState<"in" | "up">("in");
-  const [email, setEmail] = useState("demo@portoflorencio.com.br");
-  const [password, setPassword] = useState("porto2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -84,9 +84,7 @@ export default function LoginPage() {
             </button>
           </div>
           {mode === "in" && (
-            <div className="mt-8 rounded-md border border-dashed border-border px-3 py-2.5 text-[12px] text-muted-foreground">
-              Acesso de demonstração já preenchido: <span className="font-medium text-foreground">demo@portoflorencio.com.br</span> · porto2026
-            </div>
+            <p className="mt-8 text-[12px] text-muted-foreground">Esqueceu a senha? Peça a um administrador para redefinir.</p>
           )}
         </form>
       </div>

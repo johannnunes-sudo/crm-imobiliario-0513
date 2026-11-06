@@ -4,7 +4,7 @@ import { METRICS, ROLES, ROLE_HINT, ROLE_LABEL, type Role } from "../../shared/c
 import { useCrm } from "../hooks/use-crm";
 import { EXIT_STATUS_LABEL, EXIT_TONE, ExitDecisionDialog } from "../components/agency-exit";
 import type { AgencyExit } from "../queries/crm";
-import { useExits, useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
+import { useResetPassword, useExits, useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
 import { authClient, signOut } from "../lib/auth";
 import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Select, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
@@ -101,6 +101,7 @@ function UsersEditor() {
   const update = useUpdateUser();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
+  const [resetting, setResetting] = useState<UserRow | null>(null);
   const rows = users.data ?? [];
   const mgrName = (id: number | null) => c.managers.find((m) => m.id === id)?.name;
 
@@ -147,7 +148,8 @@ function UsersEditor() {
                 ) : (
                   <span className="text-[12.5px] text-muted-foreground">{u.role === "pendente" ? "—" : "Todas as carteiras"}</span>
                 )}
-                <div className="flex w-[84px] justify-end">
+                <div className="flex justify-end gap-1">
+                  {!self && <Button size="sm" variant="ghost" onClick={() => setResetting(u)}>Senha</Button>}
                   {!self && <Button size="sm" variant="ghost" onClick={() => void change(u, { active: !u.active })}>{u.active ? "Desativar" : "Reativar"}</Button>}
                 </div>
                 {u.role === "gerente" && u.managerId && (
@@ -176,7 +178,37 @@ function UsersEditor() {
         </div>
       </Panel>
       <NewUserModal open={adding} onClose={() => setAdding(false)} />
+      <ResetPasswordModal user={resetting} onClose={() => setResetting(null)} />
     </div>
+  );
+}
+
+function ResetPasswordModal({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
+  const reset = useResetPassword();
+  const toast = useToast();
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => { if (user) { setPw(""); setErr(""); } }, [user]);
+  const save = async () => {
+    if (!user) return;
+    try {
+      await reset.mutateAsync({ userId: user.id, password: pw });
+      toast(`Nova senha definida para ${user.name}`);
+      onClose();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <Modal
+      open={!!user}
+      onClose={onClose}
+      title="Redefinir senha"
+      subtitle={user ? `${user.name} · ${user.email} — as sessões abertas dessa pessoa serão encerradas. Passe a senha provisória por um canal seguro e peça para trocar em Minha conta.` : ""}
+      width={480}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save} loading={reset.isPending} disabled={pw.length < 8}>Definir senha</Button></>}
+    >
+      <Field label="Nova senha provisória" hint="Mínimo de 8 caracteres"><Input value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
+      {err && <p className="mt-3 text-[12.5px] text-danger">{err}</p>}
+    </Modal>
   );
 }
 
