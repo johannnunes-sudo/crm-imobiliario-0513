@@ -2,24 +2,29 @@ import { useEffect, useState } from "react";
 import { LogOut, Plus, ShieldCheck } from "lucide-react";
 import { METRICS, ROLES, ROLE_HINT, ROLE_LABEL, type Role } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
-import { useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
+import { EXIT_STATUS_LABEL, EXIT_TONE, ExitDecisionDialog } from "../components/agency-exit";
+import type { AgencyExit } from "../queries/crm";
+import { useExits, useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
 import { authClient, signOut } from "../lib/auth";
 import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Select, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
-type Tab = "usuarios" | "metas" | "gerentes" | "conta";
+type Tab = "usuarios" | "saidas" | "metas" | "gerentes" | "conta";
 const COLORS = ["#5FAE3A", "#1F3A2E", "#C98A1B", "#6B8F7E", "#3E7CB1", "#8A5A9E", "#C8473F"];
 
 export default function Configuracoes() {
   const c = useCrm();
   const { isAdmin } = usePerms();
   const users = useUsers(isAdmin);
+  const exitsQ = useExits();
   const [tab, setTab] = useState<Tab>(isAdmin ? "usuarios" : "conta");
   if (c.isLoading) return <PageSkeleton />;
   const pending = (users.data ?? []).filter((u) => u.role === "pendente").length;
+  const pendingExits = (exitsQ.data ?? []).filter((x) => x.status === "pendente").length;
   const options = isAdmin
     ? [
         { value: "usuarios" as Tab, label: "Usuários e acessos", count: users.data?.length },
+        { value: "saidas" as Tab, label: "Saídas da carteira", count: pendingExits || undefined },
         { value: "metas" as Tab, label: "Metas" },
         { value: "gerentes" as Tab, label: "Equipe", count: c.managers.length },
         { value: "conta" as Tab, label: "Minha conta" },
@@ -31,8 +36,10 @@ export default function Configuracoes() {
       <div className="mb-5 flex items-center gap-3">
         <Tabs value={tab} onChange={setTab} options={options} />
         {isAdmin && pending > 0 && <Badge tone="amber" dot>{pending} aguardando liberação</Badge>}
+        {isAdmin && pendingExits > 0 && <Badge tone="amber" dot>{pendingExits} saída{pendingExits > 1 ? "s" : ""} para decidir</Badge>}
       </div>
       {tab === "usuarios" && isAdmin && <UsersEditor />}
+      {tab === "saidas" && isAdmin && <ExitsPanel rows={exitsQ.data ?? []} />}
       {tab === "metas" && isAdmin && <GoalsEditor />}
       {tab === "gerentes" && isAdmin && <ManagersEditor />}
       {tab === "conta" && <Account />}
@@ -41,6 +48,51 @@ export default function Configuracoes() {
 }
 
 const ROLE_TONE: Record<Role, "brand" | "forest" | "amber" | "neutral"> = { admin: "forest", gerente: "brand", aprovador: "amber", pendente: "neutral" };
+
+function ExitsPanel({ rows }: { rows: AgencyExit[] }) {
+  const c = useCrm();
+  const [sel, setSel] = useState<AgencyExit | null>(null);
+  const pend = rows.filter((r) => r.status === "pendente");
+  const done = rows.filter((r) => r.status !== "pendente");
+  const ag = (id: number) => c.agencies.find((a) => a.id === id)?.name ?? "—";
+  const mg = (id: number | null) => c.managers.find((m) => m.id === id)?.name ?? "Roleta";
+  return (
+    <div className="space-y-5">
+      <Panel>
+        <PanelHeader title="Solicitações pendentes" subtitle="A imobiliária continua na carteira e nos indicadores da gerente até a decisão" right={<Badge tone={pend.length ? "amber" : "brand"}>{pend.length}</Badge>} />
+        {pend.length === 0 ? <p className="px-5 pb-5 text-[13px] text-muted-foreground">Nenhuma solicitação aguardando decisão.</p> : (
+          <div className="divide-y divide-border border-t border-border">
+            {pend.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-4 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-medium">{ag(r.agencyId)} <span className="font-normal text-muted-foreground">· carteira de {mg(r.managerId)}</span></div>
+                  <div className="text-[12.5px] text-muted-foreground">{r.reason}{r.note ? ` — ${r.note}` : ""} · pedido por {r.requestedBy} em {new Date(r.createdAt).toLocaleDateString("pt-BR")}</div>
+                </div>
+                <Button size="sm" variant="primary" onClick={() => setSel(r)}>Decidir</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <Panel>
+        <PanelHeader title="Histórico" subtitle="Inativações, transferências, recusas e reativações" />
+        {done.length === 0 ? <p className="px-5 pb-5 text-[13px] text-muted-foreground">Sem registros.</p> : (
+          <div className="divide-y divide-border border-t border-border">
+            {done.slice(0, 30).map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-3 px-5 py-2.5 text-[12.5px]">
+                <Badge tone={EXIT_TONE[r.status]} dot>{EXIT_STATUS_LABEL[r.status]}</Badge>
+                <span className="font-medium">{ag(r.agencyId)}</span>
+                <span className="text-muted-foreground">{r.reason ?? ""}{r.status === "transferida" ? ` → ${mg(r.toManagerId)}` : ""}{r.decisionNote ? ` · ${r.decisionNote}` : ""}</span>
+                <span className="ml-auto text-subtle">{r.decidedBy} · {new Date(r.decidedAt ?? r.createdAt).toLocaleDateString("pt-BR")}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+      <ExitDecisionDialog exit={sel} onClose={() => setSel(null)} />
+    </div>
+  );
+}
 
 function UsersEditor() {
   const c = useCrm();

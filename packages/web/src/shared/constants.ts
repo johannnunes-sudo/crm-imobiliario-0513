@@ -131,3 +131,14 @@ export const AGENCY_FOCUS = ["Lançamento", "Estoque / pronto", "Ambos"] as cons
 export const PRODUCT_STANDARDS = ["Frente mar", "Quadra mar", "Meia Praia", "Morretes", "Centro de Itapema", "Perequê", "Porto Belo centro", "Bombinhas"] as const;
 /** Cidades onde a imobiliária foca a venda (sugestões; aceita outras) */
 export const FOCUS_CITIES = ["Itapema", "Porto Belo", "Bombinhas", "Balneário Camboriú", "Camboriú", "Tijucas", "Itajaí"] as const;
+
+/** Motivos de saída da carteira (solicitação da gerente ou inativação pelo ADM) */
+export const EXIT_REASONS = [
+  "Fechou / encerrou atividades",
+  "Não trabalha com o perfil dos produtos",
+  "Sem corretores ativos",
+  "Conflito comercial",
+  "Incorporada por outra imobiliária",
+  "Relacionamento não evoluiu",
+  "Outro",
+] as const;

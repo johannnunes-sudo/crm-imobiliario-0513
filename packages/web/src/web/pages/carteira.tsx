@@ -1,4 +1,4 @@
-import { usePerms } from "../queries/crm";
+import { useExits, usePerms } from "../queries/crm";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { LayoutGrid, List, Plus, Search, Users2 } from "lucide-react";
@@ -24,6 +24,8 @@ export default function Carteira() {
   const [over, setOver] = useState<string | null>(null);
   const advance = useStageAdvance();
 
+  const exitsQ = useExits();
+  const pendingIds = useMemo(() => new Set((exitsQ.data ?? []).filter((x) => x.status === "pendente").map((x) => x.agencyId)), [exitsQ.data]);
   const rows = useMemo(
     () =>
       c.scoped.agencies
@@ -40,9 +42,10 @@ export default function Carteira() {
         .filter(
           (r) =>
             (!q || r.a.name.toLowerCase().includes(q.toLowerCase())) &&
-            (att === "Todas" || (att === "30+ dias" && r.days >= 30) || (att === "60+ dias" && r.days >= 60)),
+            (att === "Inativas" ? !r.a.active : r.a.active) &&
+            (att === "Todas" || att === "Inativas" || (att === "30+ dias" && r.days >= 30) || (att === "60+ dias" && r.days >= 60) || (att === "Saída solicitada" && pendingIds.has(r.a.id))),
         ),
-    [c, q, att],
+    [c, q, att, pendingIds],
   );
 
   if (c.isLoading) return <PageSkeleton />;
@@ -86,9 +89,11 @@ export default function Carteira() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar imobiliária" className="h-8.5 w-64 pl-8" />
         </div>
         <Select className="h-8.5 w-auto" value={att} onChange={(e) => setAtt(e.target.value)}>
-          <option>Todas</option>
+          <option value="Todas">Todas as ativas</option>
           <option>30+ dias</option>
           <option>60+ dias</option>
+          <option>Saída solicitada</option>
+          <option>Inativas</option>
         </Select>
         <div className="ml-auto">
           <Segmented
@@ -140,6 +145,7 @@ export default function Carteira() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="truncate text-[13.5px] font-medium">{r.a.name}</div>
+                            {pendingIds.has(r.a.id) && <span className="mt-0.5 inline-block rounded-full bg-amber-soft px-1.5 py-px text-[10.5px] font-medium text-[#7a5410]">Saída solicitada</span>}
                             <div className="flex items-center gap-1 text-[12px] text-muted-foreground">
                               <Users2 className="size-3" /> {r.a.brokers} corretores · {r.a.city}
                             </div>

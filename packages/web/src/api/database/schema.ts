@@ -113,3 +113,22 @@ export const profiles = sqliteTable("profiles", {
   managerId: integer("manager_id").references(() => managers.id),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
 });
+
+/**
+ * Saídas da carteira: solicitação da gerente e decisão do ADM (e inativações/reativações diretas).
+ * status: pendente | inativada | transferida | recusada | reativada
+ */
+export const agencyExits = sqliteTable("agency_exits", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agencyId: integer("agency_id").notNull().references(() => agencies.id),
+  managerId: integer("manager_id").references(() => managers.id), // gerente da carteira no momento do pedido
+  requestedBy: text("requested_by").notNull(),
+  reason: text("reason"),
+  note: text("note"),
+  status: text("status").notNull().default("pendente"),
+  decidedBy: text("decided_by"),
+  decisionNote: text("decision_note"),
+  toManagerId: integer("to_manager_id").references(() => managers.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  decidedAt: integer("decided_at", { mode: "timestamp" }),
+});

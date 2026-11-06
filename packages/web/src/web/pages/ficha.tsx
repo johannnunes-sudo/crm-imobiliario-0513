@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, CalendarPlus, Mail, MapPin, Pencil, Phone, Plus, BadgeCheck, Users2 } from "lucide-react";
+import { ArrowLeft, CalendarPlus, Mail, MapPin, Pencil, Phone, Plus, BadgeCheck, Users2, LogOut, RotateCcw } from "lucide-react";
 import { ACTIVITY_TYPES, AGENCY_STAGES } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
-import { useUpdateAgency } from "../queries/crm";
+import { useExits, usePerms, useReactivateAgency } from "../queries/crm";
+import { ExitHistory, ExitRequestDialog } from "../components/agency-exit";
 import { daysSince, health, inRange, isProposal, isSale, monthlySeries } from "../lib/metrics";
 import { brl, brlShort, fmtDate, MONTHS, pct } from "../lib/format";
 import { agencyStageColor, healthTone, oppStageTone } from "../lib/tones";
@@ -11,7 +12,7 @@ import { GlobalFilters } from "../components/filters";
 import { AreaTrend } from "../components/charts";
 import { ActivityDialog, AgencyDialog, OpportunityDialog } from "../components/forms";
 import { useStageAdvance } from "../components/stage-advance";
-import { Avatar, Badge, Button, Empty, KpiStrip, PageSkeleton, Panel, PanelHeader, Progress, Segmented, Select, Table, Tabs } from "../components/ui/kit";
+import { Avatar, Badge, Button, Empty, KpiStrip, PageSkeleton, Panel, PanelHeader, Progress, Segmented, Table, Tabs } from "../components/ui/kit";
 
 type Tab = "performance" | "historico" | "oportunidades" | "cadastro";
 
@@ -20,8 +21,10 @@ export default function Ficha() {
   const c = useCrm();
   const [tab, setTab] = useState<Tab>("performance");
   const [metric, setMetric] = useState<"Interações" | "Propostas" | "Vendas">("Interações");
-  const [dlg, setDlg] = useState<null | "act" | "plan" | "edit" | "opp">(null);
-  const update = useUpdateAgency();
+  const [dlg, setDlg] = useState<null | "act" | "plan" | "edit" | "opp" | "exit">(null);
+  const perms = usePerms();
+  const exitsQ = useExits();
+  const reactivate = useReactivateAgency();
   const advance = useStageAdvance();
 
   const a = c.agencies.find((x) => x.id === Number(id));
@@ -57,6 +60,9 @@ export default function Ficha() {
   const compMax = Math.max(1, ...d.comp.map((x) => x.v));
   const h = health(d.days);
 
+  const agencyExits = (exitsQ.data ?? []).filter((x) => x.agencyId === a.id);
+  const pendingExit = agencyExits.some((x) => x.status === "pendente");
+
   return (
     <>
       <Link to="/carteira" className="mb-4 inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground">
@@ -73,7 +79,8 @@ export default function Ficha() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-[22px] font-semibold leading-tight">{a.name}</h1>
-                {!a.active && <Badge>Inativa</Badge>}
+                {!a.active && <Badge tone="danger" dot>Inativa</Badge>}
+                {pendingExit && <Badge tone="amber" dot>Saída solicitada · aguardando ADM</Badge>}
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
                 {m && <span className="inline-flex items-center gap-1.5"><Avatar name={m.name} color={m.color} size={18} />{m.name}</span>}
@@ -88,6 +95,9 @@ export default function Ficha() {
             <Button onClick={() => setDlg("plan")}><CalendarPlus className="size-3.5" /> Agendar</Button>
             <Button onClick={() => setDlg("opp")}><Plus className="size-3.5" /> Oportunidade</Button>
             <Button variant="primary" onClick={() => setDlg("act")}><Plus className="size-4" /> Registrar atividade</Button>
+            {a.active && !pendingExit && perms.isManager && <Button variant="ghost" onClick={() => setDlg("exit")}><LogOut className="size-3.5" /> Solicitar saída da carteira</Button>}
+            {a.active && perms.isAdmin && <Button variant="danger" onClick={() => setDlg("exit")}><LogOut className="size-3.5" /> Inativar</Button>}
+            {!a.active && perms.isAdmin && <Button loading={reactivate.isPending} onClick={() => reactivate.mutate({ agencyId: a.id })}><RotateCcw className="size-3.5" /> Reativar</Button>}
           </div>
         </div>
         {/* Etapas do relacionamento */}
@@ -247,18 +257,14 @@ export default function Ficha() {
             <div className="border-t border-border px-5 py-4">
               <div className="mb-1.5 text-[12px] text-muted-foreground">Observações</div>
               <p className="text-[13px] text-foreground">{a.notes || "Nenhuma observação."}</p>
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-[12.5px] text-muted-foreground">Ativa no mapa</span>
-                <Select className="h-8 w-28" value={a.active ? "1" : "0"} onChange={(e) => update.mutate({ id: a.id, active: e.target.value === "1" })}>
-                  <option value="1">Ativa</option>
-                  <option value="0">Inativa</option>
-                </Select>
-              </div>
+              <div className="mt-4 mb-1.5 text-[12px] text-muted-foreground">Saídas da carteira</div>
+              <ExitHistory rows={agencyExits} />
             </div>
           </Panel>
         </div>
       )}
 
+      <ExitRequestDialog agency={dlg === "exit" ? a : null} mode={perms.isAdmin ? "inactivate" : "request"} onClose={() => setDlg(null)} />
       <ActivityDialog open={dlg === "act"} onClose={() => setDlg(null)} preset={{ agencyId: a.id, managerId: a.managerId }} />
       {advance.element}
       <ActivityDialog open={dlg === "plan"} onClose={() => setDlg(null)} preset={{ agencyId: a.id, managerId: a.managerId, status: "Planejada" }} />

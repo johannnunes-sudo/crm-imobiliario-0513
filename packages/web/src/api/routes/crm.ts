@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
 import { businessDaysBetween, todayIso } from "../../shared/dates";
 import { auth } from "../auth";
-import { ACTIVITY_BY_STAGE, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, DECLINE_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
+import { ACTIVITY_BY_STAGE, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, DECLINE_REASONS, EXIT_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
 import { db } from "../database";
 import * as s from "../database/schema";
 
@@ -141,6 +141,8 @@ export const agencies = {
     if (a.role !== "admin" && rest.managerId !== undefined && rest.managerId !== row.managerId)
       throw new ORPCError("FORBIDDEN", { message: "Só administradores transferem imobiliárias entre gerentes." });
     if (rest.name) await assertNoDuplicate(rest.name, id);
+    if (a.role !== "admin" && rest.active !== undefined && rest.active !== row.active)
+      throw new ORPCError("FORBIDDEN", { message: "Para tirar a imobiliária da carteira, use \"Solicitar saída da carteira\"." });
     return (await db.update(s.agencies).set(rest).where(eq(s.agencies.id, id)).returning())[0];
   }),
 };
@@ -330,6 +332,74 @@ export const goals = {
     }),
 };
 
+// ---------- Saídas da carteira ----------
+const exitReason = z.object({ reason: z.enum(EXIT_REASONS), note: optStr });
+function assertExitNote(r: { reason: string; note?: string | null }) {
+  if (r.reason === "Outro" && !r.note?.trim()) throw new ORPCError("BAD_REQUEST", { message: "Descreva o motivo quando escolher \"Outro\"." });
+}
+/** Inativa: some do kanban/metas e cancela lembretes e atividades futuras planejadas */
+async function inactivateAgency(agencyId: number) {
+  await db.update(s.agencies).set({ active: false }).where(eq(s.agencies.id, agencyId));
+  await db
+    .update(s.activities)
+    .set({ status: "Cancelada" })
+    .where(and(eq(s.activities.agencyId, agencyId), eq(s.activities.status, "Planejada"), gte(s.activities.date, todayIso())));
+}
+async function getExit(exitId: number) {
+  const [row] = await db.select().from(s.agencyExits).where(eq(s.agencyExits.id, exitId));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "Solicitação não encontrada" });
+  return row;
+}
+export const exits = {
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.agencyExits).where(own(a, s.agencyExits.managerId)).orderBy(desc(s.agencyExits.createdAt)),
+  ),
+  /** Gerente (ou ADM) pede a saída; a imobiliária continua na carteira até a decisão */
+  request: access.input(exitReason.extend({ agencyId: z.number() })).handler(async ({ input, context }) => {
+    const a = context.access;
+    denyApprover(a);
+    assertExitNote(input);
+    const ag = await getAgency(input.agencyId);
+    assertOwner(a, ag.managerId);
+    if (!ag.active) throw new ORPCError("BAD_REQUEST", { message: "A imobiliária já está inativa." });
+    const pend = await db.select().from(s.agencyExits).where(and(eq(s.agencyExits.agencyId, ag.id), eq(s.agencyExits.status, "pendente")));
+    if (pend.length) throw new ORPCError("CONFLICT", { message: "Já existe uma solicitação de saída pendente para esta imobiliária." });
+    return (await db.insert(s.agencyExits).values({ agencyId: ag.id, managerId: ag.managerId, requestedBy: context.user.name, reason: input.reason, note: input.note }).returning())[0];
+  }),
+  /** ADM decide: inativar, transferir (outra gerente ou sem gerente = roleta) ou recusar */
+  decide: adminOnly
+    .input(z.object({ id: z.number(), decision: z.enum(["inativar", "transferir", "recusar"]), toManagerId: optNum, note: optStr }))
+    .handler(async ({ input, context }) => {
+      const ex = await getExit(input.id);
+      if (ex.status !== "pendente") throw new ORPCError("BAD_REQUEST", { message: "Esta solicitação já foi decidida." });
+      if (input.decision === "recusar" && !input.note?.trim()) throw new ORPCError("BAD_REQUEST", { message: "Informe o motivo da recusa para a gerente." });
+      if (input.decision === "inativar") await inactivateAgency(ex.agencyId);
+      if (input.decision === "transferir") await db.update(s.agencies).set({ managerId: input.toManagerId ?? null }).where(eq(s.agencies.id, ex.agencyId));
+      const status = input.decision === "inativar" ? "inativada" : input.decision === "transferir" ? "transferida" : "recusada";
+      return (
+        await db
+          .update(s.agencyExits)
+          .set({ status, decidedBy: context.user.name, decisionNote: input.note, toManagerId: input.decision === "transferir" ? (input.toManagerId ?? null) : null, decidedAt: new Date() })
+          .where(eq(s.agencyExits.id, input.id))
+          .returning()
+      )[0];
+    }),
+  /** ADM inativa direto (fica registrado) */
+  inactivate: adminOnly.input(exitReason.extend({ agencyId: z.number() })).handler(async ({ input, context }) => {
+    assertExitNote(input);
+    const ag = await getAgency(input.agencyId);
+    await inactivateAgency(ag.id);
+    // pedidos pendentes desta imobiliária ficam resolvidos pela inativação
+    await db.update(s.agencyExits).set({ status: "inativada", decidedBy: context.user.name, decidedAt: new Date() }).where(and(eq(s.agencyExits.agencyId, ag.id), eq(s.agencyExits.status, "pendente")));
+    return (await db.insert(s.agencyExits).values({ agencyId: ag.id, managerId: ag.managerId, requestedBy: context.user.name, reason: input.reason, note: input.note, status: "inativada", decidedBy: context.user.name, decidedAt: new Date() }).returning())[0];
+  }),
+  reactivate: adminOnly.input(z.object({ agencyId: z.number(), note: optStr })).handler(async ({ input, context }) => {
+    const ag = await getAgency(input.agencyId);
+    await db.update(s.agencies).set({ active: true }).where(eq(s.agencies.id, ag.id));
+    return (await db.insert(s.agencyExits).values({ agencyId: ag.id, managerId: ag.managerId, requestedBy: context.user.name, note: input.note, status: "reativada", decidedBy: context.user.name, decidedAt: new Date() }).returning())[0];
+  }),
+};
+
 // ---------- Usuários (somente admin) ----------
 const roleEnum = z.enum(ROLES);
 async function ensureManagerFor(role: Role, managerId: number | null | undefined, name: string, email: string) {
@@ -382,4 +452,4 @@ export const me = authed.handler(async ({ context }) => {
 });
 
 /** Feature export: todas as rotas do CRM */
-export const crm = { me, managers, products, agencies, activities, opportunities, goals, users };
+export const crm = { me, managers, products, agencies, activities, opportunities, goals, users, exits };

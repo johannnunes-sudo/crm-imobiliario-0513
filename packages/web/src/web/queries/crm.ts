@@ -165,3 +165,29 @@ export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation(orpc.users.update.mutationOptions({ onSuccess: () => { qc.invalidateQueries({ queryKey: orpc.users.key() }); qc.invalidateQueries({ queryKey: orpc.managers.key() }); } }));
 }
+
+// ---------- Saídas da carteira ----------
+export type AgencyExit = Awaited<ReturnType<typeof import("../lib/api").client.exits.list>>[number];
+export const useExits = () => useQuery(orpc.exits.list.queryOptions(stale));
+function useExitInvalidate() {
+  const qc = useQueryClient();
+  return () => {
+    for (const k of [orpc.exits.key(), orpc.agencies.key(), orpc.activities.key()]) qc.invalidateQueries({ queryKey: k });
+  };
+}
+export function useRequestExit() {
+  const inv = useExitInvalidate();
+  return useMutation(orpc.exits.request.mutationOptions({ onSuccess: inv }));
+}
+export function useDecideExit() {
+  const inv = useExitInvalidate();
+  return useMutation(orpc.exits.decide.mutationOptions({ onSuccess: inv }));
+}
+export function useInactivateAgency() {
+  const inv = useExitInvalidate();
+  return useMutation(orpc.exits.inactivate.mutationOptions({ onSuccess: inv }));
+}
+export function useReactivateAgency() {
+  const inv = useExitInvalidate();
+  return useMutation(orpc.exits.reactivate.mutationOptions({ onSuccess: inv }));
+}
