@@ -19,7 +19,8 @@ const statusTone = { Planejada: "amber", Concluída: "brand", Cancelada: "neutra
 
 export default function Agenda() {
   const c = useCrm();
-  const [mode, setMode] = useState<"mes" | "semana" | "lista">("mes");
+  // no celular o mês fica apertado: abre direto na lista
+  const [mode, setMode] = useState<"mes" | "semana" | "lista">(() => (typeof window !== "undefined" && window.innerWidth < 640 ? "lista" : "mes"));
   const [cursor, setCursor] = useState(() => new Date());
   const [newDate, setNewDate] = useState<string | null>(null);
   const [sel, setSel] = useState<Activity | null>(null);
@@ -111,6 +112,27 @@ export default function Agenda() {
 
           {mode === "lista" ? (
             monthActs.length === 0 ? <Empty title="Nada neste mês" /> : (
+<>
+              {/* celular: cartões agrupados por dia */}
+              <div className="divide-y divide-border sm:hidden">
+                {[...monthActs.sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""))).reduce((m, a) => m.set(a.date, [...(m.get(a.date) ?? []), a]), new Map<string, Activity[]>())].map(([day, acts]) => (
+                  <div key={day} className="px-4 py-3">
+                    <div className={cn("mb-2 text-[12px] font-medium uppercase tracking-[0.04em]", day === isoDate(new Date()) ? "text-brand-strong" : "text-subtle")}>{fmtDate(day)}{day === isoDate(new Date()) ? " · hoje" : ""}</div>
+                    <div className="space-y-2">
+                      {acts.map((a) => (
+                        <button key={a.id} type="button" onClick={() => setSel(a)} className={cn("flex w-full items-center gap-3 rounded-lg border-l-[3px] bg-card px-3 py-2.5 text-left shadow-[0_0_0_1px_var(--color-border)]", leadKind(a) === "planejada" ? "border-l-brand" : leadKind(a) === "espontanea" ? "border-l-danger" : "border-l-subtle")}>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[14px] font-medium">{a.time && <span className="tnum mr-1.5 text-muted-foreground">{a.time}</span>}{c.agencyName(a.agencyId)}</div>
+                            <div className="truncate text-[12.5px] text-muted-foreground">{a.type}</div>
+                          </div>
+                          {a.status === "Concluída" ? <Check className="size-4.5 shrink-0 text-brand" strokeWidth={3} /> : <Badge tone={statusTone[a.status as keyof typeof statusTone]}>{a.status}</Badge>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden sm:block">
               <Table head={["Data", "Atividade", "Imobiliária", "Gerente", "Antecedência", "Situação"]}>
                 {monthActs.sort((a, b) => a.date.localeCompare(b.date)).map((a) => (
                   <tr key={a.id} className="cursor-pointer" onClick={() => setSel(a)}>
@@ -123,6 +145,8 @@ export default function Agenda() {
                   </tr>
                 ))}
               </Table>
+              </div>
+              </>
             )
           ) : (
             <>
