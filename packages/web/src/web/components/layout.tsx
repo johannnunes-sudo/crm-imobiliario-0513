@@ -6,6 +6,7 @@ import {
 import { cn } from "../lib/utils";
 import { signOut } from "../lib/auth";
 import { useMe } from "../queries/crm";
+import { ROLE_LABEL } from "../../shared/constants";
 import { Avatar } from "./ui/kit";
 
 const NAV: { group: string; items: { to: string; label: string; icon: typeof Home; match?: string }[] }[] = [
@@ -109,7 +110,7 @@ function Sidebar({ onNavigate, collapsed = false, onToggle }: { onNavigate?: () 
           <Avatar name={me.data?.name ?? "U"} color="#1F3A2E" size={26} />
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[13px] font-medium">{me.data?.name ?? "—"}</div>
-            <div className="truncate text-[11.5px] text-muted-foreground">{me.data?.email}</div>
+            <div className="truncate text-[11.5px] text-muted-foreground">{me.data ? ROLE_LABEL[me.data.role] : ""}</div>
           </div>
           <button onClick={signOut} title="Sair" className="rounded p-1 text-subtle hover:bg-muted hover:text-foreground">
             <LogOut className="size-3.5" />

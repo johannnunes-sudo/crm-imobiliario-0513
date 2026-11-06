@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { CalendarRange, Users } from "lucide-react";
 import { PERIODS, periodRange, previousRange, type Period } from "../lib/metrics";
-import { useManagers } from "../queries/crm";
+import { useManagers, usePerms } from "../queries/crm";
 import { cn } from "../lib/utils";
 
 type Filters = {
@@ -58,6 +58,7 @@ const pill =
 export function GlobalFilters({ showManager = true, showPeriod = true, className }: { showManager?: boolean; showPeriod?: boolean; className?: string }) {
   const f = useFilters();
   const managers = useManagers();
+  const perms = usePerms();
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {showPeriod && <div className="relative">
@@ -68,7 +69,7 @@ export function GlobalFilters({ showManager = true, showPeriod = true, className
           ))}
         </select>
       </div>}
-      {showManager && (
+      {showManager && perms.seesAll && (
         <div className="relative">
           <Users className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <select className={pill} value={f.managerId ?? ""} onChange={(e) => f.setManagerId(e.target.value ? Number(e.target.value) : null)}>

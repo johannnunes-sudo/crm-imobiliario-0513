@@ -88,3 +88,15 @@ export const goals = sqliteTable("goals", {
   metric: text("metric").notNull(),
   target: integer("target").notNull(),
 });
+
+/**
+ * Perfil de acesso de cada usuário.
+ * role: admin (vê e edita tudo) | gerente (só a própria carteira) | aprovador (vê tudo, aprova vendas) | pendente (sem acesso)
+ * managerId: gerente comercial ao qual o usuário está ligado (obrigatório para "gerente").
+ */
+export const profiles = sqliteTable("profiles", {
+  userId: text("user_id").primaryKey(),
+  role: text("role").notNull().default("pendente"),
+  managerId: integer("manager_id").references(() => managers.id),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+});

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Building2, MapPin, Pencil, Plus } from "lucide-react";
 import { useCrm } from "../hooks/use-crm";
-import { useCreateProduct, useUpdateProduct, type Product } from "../queries/crm";
+import { useCreateProduct, useUpdateProduct, usePerms, type Product } from "../queries/crm";
 import { inRange, isProposal, isSale, monthlySeries } from "../lib/metrics";
 import { brlShort, MONTHS, num, pct } from "../lib/format";
 import { Bars, Legend } from "../components/charts";
@@ -11,6 +11,7 @@ const STATUS = ["Lançamento", "Em obras", "Pronto"] as const;
 const statusTone: Record<string, Tone> = { Lançamento: "brand", "Em obras": "amber", Pronto: "forest" };
 
 export default function Empreendimentos() {
+  const perms = usePerms();
   const c = useCrm();
   const [edit, setEdit] = useState<Partial<Product> | null>(null);
 
@@ -61,9 +62,11 @@ export default function Empreendimentos() {
         title="Empreendimentos"
         subtitle="Estoque, VGV e velocidade de vendas por produto"
         actions={
-          <Button variant="primary" onClick={() => setEdit({ status: "Em obras", totalUnits: 0, soldUnits: 0, avgPrice: 0, avgArea: 0 })}>
-            <Plus className="size-4" /> Novo empreendimento
-          </Button>
+          perms.isAdmin && (
+            <Button variant="primary" onClick={() => setEdit({ status: "Em obras", totalUnits: 0, soldUnits: 0, avgPrice: 0, avgArea: 0 })}>
+              <Plus className="size-4" /> Novo empreendimento
+            </Button>
+          )
         }
       />
 
@@ -93,9 +96,11 @@ export default function Empreendimentos() {
               </div>
               <div className="flex items-center gap-1">
                 <Badge tone={statusTone[r.p.status] ?? "neutral"}>{r.p.status}</Badge>
-                <Button variant="ghost" size="sm" onClick={() => setEdit(r.p)} aria-label="Editar">
-                  <Pencil className="size-3.5" />
-                </Button>
+                {perms.isAdmin && (
+                  <Button variant="ghost" size="sm" onClick={() => setEdit(r.p)} aria-label="Editar">
+                    <Pencil className="size-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
 

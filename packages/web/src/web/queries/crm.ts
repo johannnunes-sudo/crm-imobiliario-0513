@@ -135,3 +135,29 @@ export function useUpdateProduct() {
   const inv = useInvalidate(orpc.products.key());
   return useMutation(orpc.products.update.mutationOptions({ onSuccess: inv }));
 }
+
+// ---------- Perfis de acesso ----------
+export type Me = NonNullable<ReturnType<typeof useMe>["data"]>;
+export type UserRow = Awaited<ReturnType<typeof import("../lib/api").client.users.list>>[number];
+
+/** Permissões do usuário logado, para mostrar/esconder ações na tela */
+export function usePerms() {
+  const me = useMe();
+  const role = me.data?.role;
+  return {
+    role,
+    isAdmin: role === "admin",
+    isManager: role === "gerente",
+    seesAll: role === "admin" || role === "aprovador",
+    canEdit: role === "admin" || role === "gerente",
+  };
+}
+export const useUsers = (enabled = true) => useQuery(orpc.users.list.queryOptions({ ...stale, enabled }));
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation(orpc.users.create.mutationOptions({ onSuccess: () => { qc.invalidateQueries({ queryKey: orpc.users.key() }); qc.invalidateQueries({ queryKey: orpc.managers.key() }); } }));
+}
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation(orpc.users.update.mutationOptions({ onSuccess: () => { qc.invalidateQueries({ queryKey: orpc.users.key() }); qc.invalidateQueries({ queryKey: orpc.managers.key() }); } }));
+}

@@ -1,3 +1,4 @@
+import { usePerms } from "../queries/crm";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Plus } from "lucide-react";
@@ -27,6 +28,7 @@ const SHORT: Record<Metric, string> = {
 };
 
 export default function Consolidado() {
+  const perms = usePerms();
   const c = useCrm();
   const [metricA, setA] = useState<Metric>("Propostas");
   const [metricB, setB] = useState<Metric>("Vendas");
@@ -130,9 +132,11 @@ export default function Consolidado() {
         actions={
           <>
             <GlobalFilters />
-            <Button variant="primary" onClick={() => setReg(true)}>
-              <Plus className="size-4" /> Registrar
-            </Button>
+            {perms.canEdit && (
+              <Button variant="primary" onClick={() => setReg(true)}>
+                <Plus className="size-4" /> Registrar
+              </Button>
+            )}
           </>
         }
       />

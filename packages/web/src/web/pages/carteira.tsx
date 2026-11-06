@@ -1,3 +1,4 @@
+import { usePerms } from "../queries/crm";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { LayoutGrid, List, Plus, Search, Users2 } from "lucide-react";
@@ -12,6 +13,7 @@ import { Avatar, Badge, Button, Input, KpiStrip, PageHeader, PageSkeleton, Panel
 import { cn } from "../lib/utils";
 
 export default function Carteira() {
+  const perms = usePerms();
   const c = useCrm();
   const [, nav] = useLocation();
   const [view, setView] = useState<"kanban" | "lista">("kanban");
@@ -61,9 +63,11 @@ export default function Carteira() {
         actions={
           <>
             <GlobalFilters showPeriod={false} />
-            <Button variant="primary" onClick={() => setOpen(true)}>
-              <Plus className="size-4" /> Nova imobiliária
-            </Button>
+            {perms.canEdit && (
+              <Button variant="primary" onClick={() => setOpen(true)}>
+                <Plus className="size-4" /> Nova imobiliária
+              </Button>
+            )}
           </>
         }
       />

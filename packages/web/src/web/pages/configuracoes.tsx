@@ -1,29 +1,180 @@
 import { useEffect, useState } from "react";
-import { LogOut, Plus } from "lucide-react";
-import { METRICS } from "../../shared/constants";
+import { LogOut, Plus, ShieldCheck } from "lucide-react";
+import { METRICS, ROLES, ROLE_HINT, ROLE_LABEL, type Role } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
-import { useCreateManager, useSetGoal, useUpdateManager, type Manager } from "../queries/crm";
+import { useCreateManager, useCreateUser, usePerms, useSetGoal, useUpdateManager, useUpdateUser, useUsers, useMe, type Manager, type UserRow } from "../queries/crm";
 import { authClient, signOut } from "../lib/auth";
-import { Avatar, Badge, Button, Field, Input, PageHeader, PageSkeleton, Panel, PanelHeader, Tabs, useToast } from "../components/ui/kit";
+import { Avatar, Badge, Button, Field, Input, Modal, PageHeader, PageSkeleton, Panel, PanelHeader, Select, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
-type Tab = "metas" | "gerentes" | "conta";
+type Tab = "usuarios" | "metas" | "gerentes" | "conta";
 const COLORS = ["#5FAE3A", "#1F3A2E", "#C98A1B", "#6B8F7E", "#3E7CB1", "#8A5A9E", "#C8473F"];
 
 export default function Configuracoes() {
   const c = useCrm();
-  const [tab, setTab] = useState<Tab>("metas");
+  const { isAdmin } = usePerms();
+  const users = useUsers(isAdmin);
+  const [tab, setTab] = useState<Tab>(isAdmin ? "usuarios" : "conta");
   if (c.isLoading) return <PageSkeleton />;
+  const pending = (users.data ?? []).filter((u) => u.role === "pendente").length;
+  const options = isAdmin
+    ? [
+        { value: "usuarios" as Tab, label: "Usuários e acessos", count: users.data?.length },
+        { value: "metas" as Tab, label: "Metas" },
+        { value: "gerentes" as Tab, label: "Equipe", count: c.managers.length },
+        { value: "conta" as Tab, label: "Minha conta" },
+      ]
+    : [{ value: "conta" as Tab, label: "Minha conta" }];
   return (
     <>
-      <PageHeader title="Configurações" subtitle="Metas, equipe comercial e conta" />
-      <div className="mb-5">
-        <Tabs value={tab} onChange={setTab} options={[{ value: "metas", label: "Metas" }, { value: "gerentes", label: "Equipe", count: c.managers.length }, { value: "conta", label: "Minha conta" }]} />
+      <PageHeader title="Configurações" subtitle={isAdmin ? "Usuários, metas, equipe comercial e conta" : "Sua conta"} />
+      <div className="mb-5 flex items-center gap-3">
+        <Tabs value={tab} onChange={setTab} options={options} />
+        {isAdmin && pending > 0 && <Badge tone="amber" dot>{pending} aguardando liberação</Badge>}
       </div>
-      {tab === "metas" && <GoalsEditor />}
-      {tab === "gerentes" && <ManagersEditor />}
+      {tab === "usuarios" && isAdmin && <UsersEditor />}
+      {tab === "metas" && isAdmin && <GoalsEditor />}
+      {tab === "gerentes" && isAdmin && <ManagersEditor />}
       {tab === "conta" && <Account />}
     </>
+  );
+}
+
+const ROLE_TONE: Record<Role, "brand" | "forest" | "amber" | "neutral"> = { admin: "forest", gerente: "brand", aprovador: "amber", pendente: "neutral" };
+
+function UsersEditor() {
+  const c = useCrm();
+  const users = useUsers();
+  const me = useMe();
+  const update = useUpdateUser();
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const rows = users.data ?? [];
+  const mgrName = (id: number | null) => c.managers.find((m) => m.id === id)?.name;
+
+  const change = async (u: UserRow, patch: { role?: Role; managerId?: number | null; active?: boolean }) => {
+    try {
+      await update.mutateAsync({ userId: u.id, ...patch });
+      toast(`Acesso de ${u.name} atualizado`);
+    } catch (e) {
+      toast((e as Error).message || "Não foi possível salvar");
+    }
+  };
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[1fr_300px]">
+      <Panel>
+        <PanelHeader
+          title="Usuários e níveis de acesso"
+          subtitle="Cada gerente vê só a própria carteira. Administradores e aprovação de vendas veem tudo."
+          right={<Button size="sm" variant="primary" onClick={() => setAdding(true)}><Plus className="size-3.5" /> Novo usuário</Button>}
+        />
+        <div className="hidden grid-cols-[1.4fr_1.2fr_1fr_auto] gap-3 border-t border-border px-5 py-2 text-[11px] font-medium uppercase tracking-[0.05em] text-subtle md:grid">
+          <span>Usuário</span><span>Perfil</span><span>Carteira</span><span className="w-[84px]" />
+        </div>
+        <div className="divide-y divide-border border-t border-border">
+          {rows.map((u) => {
+            const self = u.id === me.data?.id;
+            return (
+              <div key={u.id} className={cn("grid items-center gap-3 px-5 py-3 md:grid-cols-[1.4fr_1.2fr_1fr_auto]", !u.active && "opacity-55")}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={u.name} color={u.managerId ? c.manager(u.managerId)?.color : "#1F3A2E"} size={30} />
+                  <div className="min-w-0">
+                    <div className="truncate text-[13.5px] font-medium">{u.name}{self && <span className="ml-1.5 text-[11.5px] font-normal text-subtle">(você)</span>}</div>
+                    <div className="truncate text-[12px] text-muted-foreground">{u.email}</div>
+                  </div>
+                </div>
+                <Select value={u.role} disabled={self} onChange={(e) => void change(u, { role: e.target.value as Role })} className="h-8 text-[13px]">
+                  {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                </Select>
+                {u.role === "gerente" ? (
+                  <Select value={u.managerId ?? ""} onChange={(e) => void change(u, { managerId: e.target.value ? Number(e.target.value) : null })} className="h-8 text-[13px]">
+                    <option value="">Criar carteira com o nome</option>
+                    {c.managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </Select>
+                ) : (
+                  <span className="text-[12.5px] text-muted-foreground">{u.role === "pendente" ? "—" : "Todas as carteiras"}</span>
+                )}
+                <div className="flex w-[84px] justify-end">
+                  {!self && <Button size="sm" variant="ghost" onClick={() => void change(u, { active: !u.active })}>{u.active ? "Desativar" : "Reativar"}</Button>}
+                </div>
+                {u.role === "gerente" && u.managerId && (
+                  <div className="text-[11.5px] text-subtle md:col-span-4 md:-mt-1 md:pl-[42px]">
+                    Carteira de {mgrName(u.managerId)} · {c.agencies.filter((a) => a.managerId === u.managerId).length} imobiliárias
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+      <Panel className="h-fit">
+        <PanelHeader title="O que cada perfil faz" />
+        <div className="space-y-3.5 px-5 pb-5">
+          {ROLES.map((r) => (
+            <div key={r}>
+              <Badge tone={ROLE_TONE[r]} dot>{ROLE_LABEL[r]}</Badge>
+              <p className="mt-1 text-[12.5px] text-muted-foreground">{ROLE_HINT[r]}</p>
+            </div>
+          ))}
+          <p className="flex gap-2 border-t border-border pt-3 text-[12px] text-muted-foreground">
+            <ShieldCheck className="size-4 shrink-0 text-brand" />
+            Imobiliárias não podem ser cadastradas em duplicidade: o sistema avisa em qual carteira ela já está.
+          </p>
+        </div>
+      </Panel>
+      <NewUserModal open={adding} onClose={() => setAdding(false)} />
+    </div>
+  );
+}
+
+function NewUserModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const c = useCrm();
+  const create = useCreateUser();
+  const toast = useToast();
+  const empty = { name: "", email: "", password: "", role: "gerente" as Role, managerId: "" };
+  const [f, setF] = useState(empty);
+  const [err, setErr] = useState("");
+  useEffect(() => { if (open) { setF(empty); setErr(""); } }, [open]);
+  const valid = f.name.trim() && /.+@.+\..+/.test(f.email) && f.password.length >= 8;
+  const save = async () => {
+    setErr("");
+    try {
+      await create.mutateAsync({ name: f.name, email: f.email, password: f.password, role: f.role, managerId: f.managerId ? Number(f.managerId) : null });
+      toast(`Usuário ${f.name} criado`);
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || "Não foi possível criar o usuário");
+    }
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Novo usuário"
+      subtitle="A pessoa entra com este e-mail e a senha provisória, e pode trocá-la em Minha conta."
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save} loading={create.isPending} disabled={!valid}>Criar usuário</Button></>}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Nome"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="E-mail corporativo"><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Perfil" hint={ROLE_HINT[f.role]}>
+          <Select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as Role })}>
+            {ROLES.filter((r) => r !== "pendente").map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+          </Select>
+        </Field>
+        {f.role === "gerente" ? (
+          <Field label="Carteira" hint="Sem escolher, cria uma carteira nova com o nome do usuário">
+            <Select value={f.managerId} onChange={(e) => setF({ ...f, managerId: e.target.value })}>
+              <option value="">Nova carteira</option>
+              {c.managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </Select>
+          </Field>
+        ) : <div />}
+        <Field label="Senha provisória" hint="Mínimo de 8 caracteres"><Input value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></Field>
+      </div>
+      {err && <p className="mt-3 text-[12.5px] text-danger">{err}</p>}
+    </Modal>
   );
 }
 

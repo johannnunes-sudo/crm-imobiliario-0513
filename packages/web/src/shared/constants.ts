@@ -79,3 +79,19 @@ export const METRIC_BY_STAGE: Record<AgencyStage, Metric> = {
 
 /** Tipos cujo indicador soma participantes em vez de contar registros */
 export const COUNTS_PARTICIPANTS = new Set(["Visita à obra"]);
+
+/** Perfis de acesso */
+export const ROLES = ["admin", "gerente", "aprovador", "pendente"] as const;
+export type Role = (typeof ROLES)[number];
+export const ROLE_LABEL: Record<Role, string> = {
+  admin: "Administrador",
+  gerente: "Gerente de relacionamento",
+  aprovador: "Aprovação de vendas",
+  pendente: "Aguardando liberação",
+};
+export const ROLE_HINT: Record<Role, string> = {
+  admin: "Vê e edita tudo, gerencia usuários e metas",
+  gerente: "Vê e edita só a própria carteira, agenda e negociações",
+  aprovador: "Vê todos os dados e atualiza negociações (aprovação de vendas)",
+  pendente: "Sem acesso aos dados até um administrador liberar",
+};

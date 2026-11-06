@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
+import { auth } from "../auth";
+import { ROLES, type Role } from "../../shared/constants";
 import { db } from "../database";
 import * as s from "../database/schema";
 
@@ -9,13 +11,69 @@ const id = z.object({ id: z.number() });
 const optNum = z.number().nullable().optional();
 const optStr = z.string().nullable().optional();
 
+// ---------- Perfis de acesso ----------
+type Access = { role: Role; managerId: number | null };
+
+/** E-mails que viram administradores automaticamente (separados por vírgula). */
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "").split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+
+/** Busca (ou cria) o perfil do usuário logado. Sem nenhum admin cadastrado, o primeiro usuário vira admin. */
+async function loadProfile(user: { id: string; email: string }) {
+  const [found] = await db.select().from(s.profiles).where(eq(s.profiles.userId, user.id));
+  if (found) return found;
+  const admins = await db.select().from(s.profiles).where(eq(s.profiles.role, "admin"));
+  const role: Role = ADMIN_EMAILS.includes(user.email.toLowerCase()) || (admins.length === 0 && ADMIN_EMAILS.length === 0) ? "admin" : "pendente";
+  return (await db.insert(s.profiles).values({ userId: user.id, role }).returning())[0];
+}
+
+/** Procedimento com perfil carregado; bloqueia usuários pendentes ou desativados. */
+const access = authed.use(async ({ context, next }) => {
+  const p = await loadProfile(context.user);
+  if (!p.active) throw new ORPCError("FORBIDDEN", { message: "Usuário desativado. Fale com um administrador." });
+  if (p.role === "pendente") throw new ORPCError("FORBIDDEN", { message: "Acesso aguardando liberação de um administrador." });
+  return next({ context: { access: { role: p.role as Role, managerId: p.managerId } as Access } });
+});
+const adminOnly = access.use(({ context, next }) => {
+  if (context.access.role !== "admin") throw new ORPCError("FORBIDDEN", { message: "Apenas administradores." });
+  return next();
+});
+
+const seesAll = (a: Access) => a.role === "admin" || a.role === "aprovador";
+/** Filtro por carteira: gerente vê só o que é dele. */
+const own = (a: Access, col: any) => (seesAll(a) ? undefined : eq(col, a.managerId ?? -1));
+/** Garante que o registro pertence ao gerente logado. */
+function assertOwner(a: Access, managerId: number | null | undefined) {
+  if (seesAll(a)) return;
+  if (managerId == null || managerId !== a.managerId) throw new ORPCError("FORBIDDEN", { message: "Este registro é da carteira de outro gerente." });
+}
+function denyApprover(a: Access) {
+  if (a.role === "aprovador") throw new ORPCError("FORBIDDEN", { message: "Seu perfil não permite esta alteração." });
+}
+/** Para gerente, o responsável é sempre ele mesmo. */
+const forceManager = <T extends { managerId?: number | null }>(a: Access, input: T): T => (seesAll(a) ? input : { ...input, managerId: a.managerId });
+
+/** Nome normalizado para detectar imobiliária duplicada */
+const norm = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\b(imobiliaria|imoveis|imob|ltda|me|eireli)\b/g, "").replace(/[^a-z0-9]/g, "");
+async function assertNoDuplicate(name: string, ignoreId?: number) {
+  const key = norm(name);
+  if (!key) return;
+  const all = await db.select({ id: s.agencies.id, name: s.agencies.name, managerId: s.agencies.managerId }).from(s.agencies);
+  const dup = all.find((r) => r.id !== ignoreId && norm(r.name) === key);
+  if (dup) {
+    const [m] = dup.managerId ? await db.select().from(s.managers).where(eq(s.managers.id, dup.managerId)) : [];
+    throw new ORPCError("CONFLICT", { message: `"${dup.name}" já está cadastrada${m ? ` na carteira de ${m.name}` : ""}.` });
+  }
+}
+
 // ---------- Gerentes ----------
 export const managers = {
-  list: authed.handler(() => db.select().from(s.managers).orderBy(asc(s.managers.name))),
-  create: authed
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.managers).where(own(a, s.managers.id)).orderBy(asc(s.managers.name)),
+  ),
+  create: adminOnly
     .input(z.object({ name: z.string().min(1), email: optStr, color: z.string().optional() }))
     .handler(async ({ input }) => (await db.insert(s.managers).values(input).returning())[0]),
-  update: authed
+  update: adminOnly
     .input(id.extend({ name: z.string().optional(), email: optStr, color: z.string().optional(), active: z.boolean().optional() }))
     .handler(async ({ input: { id, ...rest } }) => (await db.update(s.managers).set(rest).where(eq(s.managers.id, id)).returning())[0]),
 };
@@ -32,9 +90,9 @@ const productInput = z.object({
   avgArea: z.number().optional(),
 });
 export const products = {
-  list: authed.handler(() => db.select().from(s.products).orderBy(asc(s.products.name))),
-  create: authed.input(productInput).handler(async ({ input }) => (await db.insert(s.products).values(input).returning())[0]),
-  update: authed
+  list: access.handler(() => db.select().from(s.products).orderBy(asc(s.products.name))),
+  create: adminOnly.input(productInput).handler(async ({ input }) => (await db.insert(s.products).values(input).returning())[0]),
+  update: adminOnly
     .input(id.merge(productInput.partial()))
     .handler(async ({ input: { id, ...rest } }) => (await db.update(s.products).set(rest).where(eq(s.products.id, id)).returning())[0]),
 };
@@ -53,17 +111,34 @@ const agencyInput = z.object({
   notes: optStr,
   active: z.boolean().optional(),
 });
+async function getAgency(agencyId: number) {
+  const [row] = await db.select().from(s.agencies).where(eq(s.agencies.id, agencyId));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "Imobiliária não encontrada" });
+  return row;
+}
 export const agencies = {
-  list: authed.handler(() => db.select().from(s.agencies).orderBy(asc(s.agencies.name))),
-  get: authed.input(id).handler(async ({ input }) => {
-    const [row] = await db.select().from(s.agencies).where(eq(s.agencies.id, input.id));
-    if (!row) throw new ORPCError("NOT_FOUND", { message: "Imobiliária não encontrada" });
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.agencies).where(own(a, s.agencies.managerId)).orderBy(asc(s.agencies.name)),
+  ),
+  get: access.input(id).handler(async ({ input, context: { access: a } }) => {
+    const row = await getAgency(input.id);
+    assertOwner(a, row.managerId);
     return row;
   }),
-  create: authed.input(agencyInput).handler(async ({ input }) => (await db.insert(s.agencies).values(input).returning())[0]),
-  update: authed
-    .input(id.merge(agencyInput.partial()))
-    .handler(async ({ input: { id, ...rest } }) => (await db.update(s.agencies).set(rest).where(eq(s.agencies.id, id)).returning())[0]),
+  create: access.input(agencyInput).handler(async ({ input, context: { access: a } }) => {
+    denyApprover(a);
+    await assertNoDuplicate(input.name);
+    return (await db.insert(s.agencies).values(forceManager(a, input)).returning())[0];
+  }),
+  update: access.input(id.merge(agencyInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
+    denyApprover(a);
+    const row = await getAgency(id);
+    assertOwner(a, row.managerId);
+    if (a.role !== "admin" && rest.managerId !== undefined && rest.managerId !== row.managerId)
+      throw new ORPCError("FORBIDDEN", { message: "Só administradores transferem imobiliárias entre gerentes." });
+    if (rest.name) await assertNoDuplicate(rest.name, id);
+    return (await db.update(s.agencies).set(rest).where(eq(s.agencies.id, id)).returning())[0];
+  }),
 };
 
 // ---------- Atividades ----------
@@ -82,9 +157,19 @@ const activityInput = z.object({
   nextAction: optStr,
   nextDate: optStr,
 });
+async function getActivity(activityId: number) {
+  const [row] = await db.select().from(s.activities).where(eq(s.activities.id, activityId));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "Atividade não encontrada" });
+  return row;
+}
 export const activities = {
-  list: authed.handler(() => db.select().from(s.activities).orderBy(desc(s.activities.date), desc(s.activities.id))),
-  create: authed.input(activityInput).handler(async ({ input }) => {
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.activities).where(own(a, s.activities.managerId)).orderBy(desc(s.activities.date), desc(s.activities.id)),
+  ),
+  create: access.input(activityInput).handler(async ({ input: raw, context: { access: a } }) => {
+    denyApprover(a);
+    const input = forceManager(a, raw);
+    if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
     const [row] = await db.insert(s.activities).values(input).returning();
     // Próxima ação vira uma atividade planejada na agenda
     if (input.nextAction && input.nextDate) {
@@ -100,10 +185,15 @@ export const activities = {
     }
     return row;
   }),
-  update: authed
-    .input(id.merge(activityInput.partial()))
-    .handler(async ({ input: { id, ...rest } }) => (await db.update(s.activities).set(rest).where(eq(s.activities.id, id)).returning())[0]),
-  remove: authed.input(id).handler(async ({ input }) => {
+  update: access.input(id.merge(activityInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
+    denyApprover(a);
+    assertOwner(a, (await getActivity(id)).managerId);
+    const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
+    return (await db.update(s.activities).set(data).where(eq(s.activities.id, id)).returning())[0];
+  }),
+  remove: access.input(id).handler(async ({ input, context: { access: a } }) => {
+    denyApprover(a);
+    assertOwner(a, (await getActivity(input.id)).managerId);
     await db.delete(s.activities).where(eq(s.activities.id, input.id));
     return { ok: true };
   }),
@@ -127,13 +217,30 @@ const oppInput = z.object({
   declineReason: optStr,
   date: z.string(),
 });
+async function getOpportunity(oppId: number) {
+  const [row] = await db.select().from(s.opportunities).where(eq(s.opportunities.id, oppId));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "Oportunidade não encontrada" });
+  return row;
+}
 export const opportunities = {
-  list: authed.handler(() => db.select().from(s.opportunities).orderBy(desc(s.opportunities.date))),
-  create: authed.input(oppInput).handler(async ({ input }) => (await db.insert(s.opportunities).values(input).returning())[0]),
-  update: authed
-    .input(id.merge(oppInput.partial()))
-    .handler(async ({ input: { id, ...rest } }) => (await db.update(s.opportunities).set(rest).where(eq(s.opportunities.id, id)).returning())[0]),
-  remove: authed.input(id).handler(async ({ input }) => {
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.opportunities).where(own(a, s.opportunities.managerId)).orderBy(desc(s.opportunities.date)),
+  ),
+  create: access.input(oppInput).handler(async ({ input: raw, context: { access: a } }) => {
+    denyApprover(a);
+    const input = forceManager(a, raw);
+    if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
+    return (await db.insert(s.opportunities).values(input).returning())[0];
+  }),
+  // aprovador pode atualizar negociações (aprovação de vendas)
+  update: access.input(id.merge(oppInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
+    assertOwner(a, (await getOpportunity(id)).managerId);
+    const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
+    return (await db.update(s.opportunities).set(data).where(eq(s.opportunities.id, id)).returning())[0];
+  }),
+  remove: access.input(id).handler(async ({ input, context: { access: a } }) => {
+    denyApprover(a);
+    assertOwner(a, (await getOpportunity(input.id)).managerId);
     await db.delete(s.opportunities).where(eq(s.opportunities.id, input.id));
     return { ok: true };
   }),
@@ -141,8 +248,10 @@ export const opportunities = {
 
 // ---------- Metas ----------
 export const goals = {
-  list: authed.handler(() => db.select().from(s.goals)),
-  set: authed
+  list: access.handler(({ context: { access: a } }) =>
+    db.select().from(s.goals).where(seesAll(a) ? undefined : or(isNull(s.goals.managerId), eq(s.goals.managerId, a.managerId ?? -1))),
+  ),
+  set: adminOnly
     .input(z.object({ managerId: z.number().nullable(), metric: z.string(), target: z.number().min(0) }))
     .handler(async ({ input }) => {
       const all = await db.select().from(s.goals);
@@ -152,7 +261,56 @@ export const goals = {
     }),
 };
 
-export const me = authed.handler(({ context }) => context.user);
+// ---------- Usuários (somente admin) ----------
+const roleEnum = z.enum(ROLES);
+async function ensureManagerFor(role: Role, managerId: number | null | undefined, name: string, email: string) {
+  if (role !== "gerente" || managerId) return managerId ?? null;
+  // gerente sem carteira vinculada: cria o gerente comercial com o mesmo nome
+  const [existing] = await db.select().from(s.managers).where(eq(s.managers.email, email));
+  if (existing) return existing.id;
+  return (await db.insert(s.managers).values({ name, email }).returning())[0].id;
+}
+export const users = {
+  list: adminOnly.handler(async () => {
+    const rows = await db
+      .select({ id: s.user.id, name: s.user.name, email: s.user.email, createdAt: s.user.createdAt, role: s.profiles.role, managerId: s.profiles.managerId, active: s.profiles.active })
+      .from(s.user)
+      .leftJoin(s.profiles, eq(s.profiles.userId, s.user.id))
+      .orderBy(asc(s.user.name));
+    return rows.map((r) => ({ ...r, role: (r.role ?? "pendente") as Role, active: r.active ?? true }));
+  }),
+  create: adminOnly
+    .input(z.object({ name: z.string().min(1), email: z.string().email(), password: z.string().min(8), role: roleEnum, managerId: optNum }))
+    .handler(async ({ input }) => {
+      const email = input.email.trim().toLowerCase();
+      const [exists] = await db.select().from(s.user).where(eq(s.user.email, email));
+      if (exists) throw new ORPCError("CONFLICT", { message: "Já existe um usuário com este e-mail." });
+      const res = await auth.api.signUpEmail({ body: { name: input.name.trim(), email, password: input.password } });
+      const managerId = await ensureManagerFor(input.role, input.managerId, input.name.trim(), email);
+      await db.insert(s.profiles).values({ userId: res.user.id, role: input.role, managerId }).onConflictDoUpdate({ target: s.profiles.userId, set: { role: input.role, managerId } });
+      return { id: res.user.id };
+    }),
+  update: adminOnly
+    .input(z.object({ userId: z.string(), role: roleEnum.optional(), managerId: optNum, active: z.boolean().optional() }))
+    .handler(async ({ input, context }) => {
+      if (input.userId === context.user.id && ((input.role && input.role !== "admin") || input.active === false))
+        throw new ORPCError("FORBIDDEN", { message: "Você não pode remover o próprio acesso de administrador." });
+      const [u] = await db.select().from(s.user).where(eq(s.user.id, input.userId));
+      if (!u) throw new ORPCError("NOT_FOUND", { message: "Usuário não encontrado" });
+      const [cur] = await db.select().from(s.profiles).where(eq(s.profiles.userId, input.userId));
+      const role = input.role ?? (cur?.role as Role) ?? "pendente";
+      const managerId = await ensureManagerFor(role, input.managerId !== undefined ? input.managerId : cur?.managerId, u.name, u.email);
+      const values = { role, managerId, active: input.active ?? cur?.active ?? true };
+      await db.insert(s.profiles).values({ userId: input.userId, ...values }).onConflictDoUpdate({ target: s.profiles.userId, set: values });
+      return { ok: true };
+    }),
+};
+
+/** Usuário logado + perfil. Pendentes/desativados recebem o perfil sem erro, para a tela de aviso. */
+export const me = authed.handler(async ({ context }) => {
+  const p = await loadProfile(context.user);
+  return { ...context.user, role: p.role as Role, managerId: p.managerId, active: p.active };
+});
 
 /** Feature export: todas as rotas do CRM */
-export const crm = { me, managers, products, agencies, activities, opportunities, goals };
+export const crm = { me, managers, products, agencies, activities, opportunities, goals, users };
