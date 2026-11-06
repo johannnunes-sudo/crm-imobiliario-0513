@@ -128,6 +128,6 @@ export const BROKER_REQUIRED_OPP_STAGES = new Set(["Proposta", "Aguardando assin
 /** Perfil comercial da imobiliária */
 export const AGENCY_FOCUS = ["Lançamento", "Estoque / pronto", "Ambos"] as const;
 /** Padrões de produto que a imobiliária trabalha (sugestões; aceita outros) */
-export const PRODUCT_STANDARDS = ["Frente mar", "Quadra mar", "Meia Praia", "Morretes", "Centro de Itapema", "Perequê", "Porto Belo centro", "Bombinhas", "Alto padrão", "Médio padrão", "Econômico"] as const;
+export const PRODUCT_STANDARDS = ["Frente mar", "Quadra mar", "Meia Praia", "Morretes", "Centro de Itapema", "Perequê", "Porto Belo centro", "Bombinhas"] as const;
 /** Cidades onde a imobiliária foca a venda (sugestões; aceita outras) */
 export const FOCUS_CITIES = ["Itapema", "Porto Belo", "Bombinhas", "Balneário Camboriú", "Camboriú", "Tijucas", "Itajaí"] as const;
