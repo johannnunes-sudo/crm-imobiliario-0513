@@ -4,6 +4,7 @@ import { Protected } from "./components/protected";
 import { AppLayout } from "./components/layout";
 import LoginPage from "./pages/login";
 import Consolidado from "./pages/index";
+import Hoje from "./pages/hoje";
 import Gestor from "./pages/gestor";
 import Pipeline from "./pages/pipeline";
 import Carteira from "./pages/carteira";
@@ -25,6 +26,7 @@ function App() {
             <AppLayout>
               <Switch>
                 <Route path="/" component={Consolidado} />
+                <Route path="/hoje" component={Hoje} />
                 <Route path="/gestor" component={Gestor} />
                 <Route path="/pipeline" component={Pipeline} />
                 <Route path="/carteira" component={Carteira} />

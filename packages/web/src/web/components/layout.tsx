@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  LayoutGrid, KanbanSquare, Building2, CalendarDays, PlusCircle, Gauge, Home, BarChart3, Settings, LogOut, Menu, X,
+  LayoutGrid, KanbanSquare, Building2, CalendarDays, PlusCircle, Gauge, Home, BarChart3, Settings, LogOut, Menu, X, Sun, Plus,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { signOut } from "../lib/auth";
@@ -13,6 +13,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: typeof Hom
   {
     group: "Visão geral",
     items: [
+      { to: "/hoje", label: "Hoje", icon: Sun },
       { to: "/", label: "Consolidado", icon: LayoutGrid },
       { to: "/gestor", label: "Gestor comercial", icon: Gauge },
     ],
@@ -130,9 +131,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
       localStorage.setItem("pf_nav_collapsed", v ? "0" : "1");
       return !v;
     });
-  const [loc] = useLocation();
+  const [loc, nav] = useLocation();
+  const me = useMe();
+  // No celular, a gerente abre direto na tela "Hoje"
+  useEffect(() => {
+    if (me.data?.role === "gerente" && loc === "/" && window.innerWidth < 1024 && !sessionStorage.getItem("pf_home_seen")) {
+      sessionStorage.setItem("pf_home_seen", "1");
+      nav("/hoje");
+    }
+  }, [me.data?.role]); // eslint-disable-line
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-[72px] lg:pb-0">
       <aside className={cn("fixed inset-y-0 left-0 z-30 hidden border-r border-border bg-[#f2f2ee] transition-[width] duration-200 lg:block", collapsed ? "w-[64px]" : "w-[240px]")}>
         <Sidebar collapsed={collapsed} onToggle={toggle} />
       </aside>
@@ -158,10 +167,40 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       )}
       <main className={cn("transition-[padding] duration-200", collapsed ? "lg:pl-[64px]" : "lg:pl-[240px]")}>
-        <div key={loc} className="rise mx-auto max-w-[1440px] px-5 py-7 lg:px-9">
+        <div key={loc} className="rise mx-auto max-w-[1440px] px-4 py-5 sm:px-5 sm:py-7 lg:px-9">
           {children}
         </div>
       </main>
+      <BottomNav loc={loc} />
     </div>
+  );
+}
+
+/** Menu inferior no celular: Hoje, Carteira, Registrar (destaque), Pipeline, Agenda */
+function BottomNav({ loc }: { loc: string }) {
+  const items = [
+    { to: "/hoje", label: "Hoje", icon: Sun },
+    { to: "/carteira", label: "Carteira", icon: Building2, match: "/imobiliarias" },
+    { to: "/registro", label: "Registrar", icon: Plus, main: true },
+    { to: "/pipeline", label: "Pipeline", icon: KanbanSquare },
+    { to: "/agenda", label: "Agenda", icon: CalendarDays },
+  ];
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-end justify-around border-t border-border bg-card/95 px-1 pt-1.5 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+      {items.map(({ to, label, icon: Icon, match, main }) => {
+        const active = loc.startsWith(to) || (match && loc.startsWith(match));
+        return main ? (
+          <Link key={to} to={to} aria-label={label} className="-mt-5 flex flex-col items-center gap-1 text-[10.5px] font-medium text-forest">
+            <span className="flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_6px_16px_-4px_rgba(95,174,58,0.6)]"><Icon className="size-6" strokeWidth={2.4} /></span>
+            {label}
+          </Link>
+        ) : (
+          <Link key={to} to={to} className={cn("flex min-w-[60px] flex-col items-center gap-1 py-1 text-[10.5px]", active ? "font-semibold text-brand-strong" : "text-muted-foreground")}>
+            <Icon className="size-5" strokeWidth={active ? 2.2 : 1.8} />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

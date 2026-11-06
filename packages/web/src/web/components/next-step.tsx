@@ -73,13 +73,13 @@ export function NextStepDialog({ done, agencyName, onClose }: { done: Activity |
         {NEXT_STEPS.map((s, i) => {
           const on = picked.includes(i);
           return (
-            <div key={s.label} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors", on ? "border-brand bg-brand-soft" : "border-border")}>
-              <button type="button" onClick={() => toggle(i)} className="flex flex-1 items-center gap-2.5 text-left">
+            <div key={s.label} className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 transition-colors", on ? "border-brand bg-brand-soft" : "border-border")}>
+              <button type="button" onClick={() => toggle(i)} className="flex min-w-[160px] flex-1 items-center gap-2.5 text-left">
                 <span className={cn("flex size-4.5 items-center justify-center rounded border text-[11px] text-white", on ? "border-brand bg-brand" : "border-border-strong")}>{on && "✓"}</span>
                 <span className="text-[13.5px] font-medium">{s.label}</span>
-                <span className="text-[12px] text-muted-foreground">{s.type}</span>
+                <span className="hidden text-[12px] text-muted-foreground sm:inline">{s.type}</span>
               </button>
-              <Input type="date" aria-label={`Data de ${s.label}`} className="h-8 w-[150px]" value={dates[i] ?? ""} onChange={(e) => { setDates({ ...dates, [i]: e.target.value }); if (!on) toggle(i); }} />
+              <Input type="date" aria-label={`Data de ${s.label}`} className="h-8 w-full sm:w-[150px]" value={dates[i] ?? ""} onChange={(e) => { setDates({ ...dates, [i]: e.target.value }); if (!on) toggle(i); }} />
             </div>
           );
         })}

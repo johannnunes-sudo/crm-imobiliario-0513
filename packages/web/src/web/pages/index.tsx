@@ -156,11 +156,11 @@ export default function Consolidado() {
             title="Evolução mensal"
             subtitle="Últimos 6 meses · compare dois indicadores"
             right={
-              <div className="flex gap-2">
-                <Select className="h-7.5 w-auto text-[12.5px]" value={metricA} onChange={(e) => setA(e.target.value as Metric)}>
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+                <Select className="h-7.5 w-full min-w-0 text-[12.5px] sm:w-auto" value={metricA} onChange={(e) => setA(e.target.value as Metric)}>
                   {METRICS.map((m) => <option key={m}>{m}</option>)}
                 </Select>
-                <Select className="h-7.5 w-auto text-[12.5px]" value={metricB} onChange={(e) => setB(e.target.value as Metric)}>
+                <Select className="h-7.5 w-full min-w-0 text-[12.5px] sm:w-auto" value={metricB} onChange={(e) => setB(e.target.value as Metric)}>
                   {METRICS.map((m) => <option key={m}>{m}</option>)}
                 </Select>
               </div>

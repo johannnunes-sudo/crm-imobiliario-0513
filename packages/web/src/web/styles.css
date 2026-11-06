@@ -95,3 +95,7 @@
 .rise {
   animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
+
+/* Celular: itens de grid não podem forçar a página a ficar mais larga que a tela */
+.grid > * { min-width: 0; }
+main { overflow-x: clip; }
