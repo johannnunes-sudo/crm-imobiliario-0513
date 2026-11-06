@@ -1,0 +1,137 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { orpc } from "../lib/api";
+import type * as s from "../../api/database/schema";
+
+export type Manager = typeof s.managers.$inferSelect;
+export type Product = typeof s.products.$inferSelect;
+export type Agency = typeof s.agencies.$inferSelect;
+export type Activity = typeof s.activities.$inferSelect;
+export type Opportunity = typeof s.opportunities.$inferSelect;
+export type Goal = typeof s.goals.$inferSelect;
+
+const stale = { staleTime: 30_000 };
+
+export const useMe = () => useQuery(orpc.me.queryOptions({ ...stale, retry: false }));
+export const useManagers = () => useQuery(orpc.managers.list.queryOptions(stale));
+export const useProducts = () => useQuery(orpc.products.list.queryOptions(stale));
+export const useAgencies = () => useQuery(orpc.agencies.list.queryOptions(stale));
+export const useActivities = () => useQuery(orpc.activities.list.queryOptions(stale));
+export const useOpportunities = () => useQuery(orpc.opportunities.list.queryOptions(stale));
+export const useGoals = () => useQuery(orpc.goals.list.queryOptions(stale));
+
+/** Tudo que os painéis precisam, com flag de carregamento única */
+export function useCrmData() {
+  const managers = useManagers();
+  const products = useProducts();
+  const agencies = useAgencies();
+  const activities = useActivities();
+  const opportunities = useOpportunities();
+  const goals = useGoals();
+  const all = [managers, products, agencies, activities, opportunities, goals];
+  return {
+    isLoading: all.some((q) => q.isLoading),
+    managers: managers.data ?? [],
+    products: products.data ?? [],
+    agencies: agencies.data ?? [],
+    activities: activities.data ?? [],
+    opportunities: opportunities.data ?? [],
+    goals: goals.data ?? [],
+  };
+}
+
+function useInvalidate(key: readonly unknown[]) {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries({ queryKey: key });
+}
+
+export function useCreateActivity() {
+  const inv = useInvalidate(orpc.activities.key());
+  return useMutation(orpc.activities.create.mutationOptions({ onSuccess: inv }));
+}
+export function useUpdateActivity() {
+  const qc = useQueryClient();
+  const key = orpc.activities.list.queryOptions().queryKey;
+  return useMutation(
+    orpc.activities.update.mutationOptions({
+      onMutate: async (input) => {
+        await qc.cancelQueries({ queryKey: key });
+        const prev = qc.getQueryData<Activity[]>(key);
+        qc.setQueryData<Activity[]>(key, (old) => old?.map((a) => (a.id === input.id ? { ...a, ...input } as Activity : a)));
+        return { prev };
+      },
+      onError: (_e, _i, ctx) => qc.setQueryData(key, ctx?.prev),
+      onSettled: () => qc.invalidateQueries({ queryKey: orpc.activities.key() }),
+    }),
+  );
+}
+export function useRemoveActivity() {
+  const inv = useInvalidate(orpc.activities.key());
+  return useMutation(orpc.activities.remove.mutationOptions({ onSuccess: inv }));
+}
+
+export function useCreateOpportunity() {
+  const inv = useInvalidate(orpc.opportunities.key());
+  return useMutation(orpc.opportunities.create.mutationOptions({ onSuccess: inv }));
+}
+export function useUpdateOpportunity() {
+  const qc = useQueryClient();
+  const key = orpc.opportunities.list.queryOptions().queryKey;
+  return useMutation(
+    orpc.opportunities.update.mutationOptions({
+      onMutate: async (input) => {
+        await qc.cancelQueries({ queryKey: key });
+        const prev = qc.getQueryData<Opportunity[]>(key);
+        qc.setQueryData<Opportunity[]>(key, (old) => old?.map((o) => (o.id === input.id ? { ...o, ...input } as Opportunity : o)));
+        return { prev };
+      },
+      onError: (_e, _i, ctx) => qc.setQueryData(key, ctx?.prev),
+      onSettled: () => qc.invalidateQueries({ queryKey: orpc.opportunities.key() }),
+    }),
+  );
+}
+export function useRemoveOpportunity() {
+  const inv = useInvalidate(orpc.opportunities.key());
+  return useMutation(orpc.opportunities.remove.mutationOptions({ onSuccess: inv }));
+}
+
+export function useCreateAgency() {
+  const inv = useInvalidate(orpc.agencies.key());
+  return useMutation(orpc.agencies.create.mutationOptions({ onSuccess: inv }));
+}
+export function useUpdateAgency() {
+  const qc = useQueryClient();
+  const key = orpc.agencies.list.queryOptions().queryKey;
+  return useMutation(
+    orpc.agencies.update.mutationOptions({
+      onMutate: async (input) => {
+        await qc.cancelQueries({ queryKey: key });
+        const prev = qc.getQueryData<Agency[]>(key);
+        qc.setQueryData<Agency[]>(key, (old) => old?.map((a) => (a.id === input.id ? { ...a, ...input } as Agency : a)));
+        return { prev };
+      },
+      onError: (_e, _i, ctx) => qc.setQueryData(key, ctx?.prev),
+      onSettled: () => qc.invalidateQueries({ queryKey: orpc.agencies.key() }),
+    }),
+  );
+}
+
+export function useSetGoal() {
+  const inv = useInvalidate(orpc.goals.key());
+  return useMutation(orpc.goals.set.mutationOptions({ onSuccess: inv }));
+}
+export function useCreateManager() {
+  const inv = useInvalidate(orpc.managers.key());
+  return useMutation(orpc.managers.create.mutationOptions({ onSuccess: inv }));
+}
+export function useUpdateManager() {
+  const inv = useInvalidate(orpc.managers.key());
+  return useMutation(orpc.managers.update.mutationOptions({ onSuccess: inv }));
+}
+export function useCreateProduct() {
+  const inv = useInvalidate(orpc.products.key());
+  return useMutation(orpc.products.create.mutationOptions({ onSuccess: inv }));
+}
+export function useUpdateProduct() {
+  const inv = useInvalidate(orpc.products.key());
+  return useMutation(orpc.products.update.mutationOptions({ onSuccess: inv }));
+}
