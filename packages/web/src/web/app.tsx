@@ -1,5 +1,4 @@
 import { Route, Switch } from "wouter";
-import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
 import { Provider } from "./components/provider";
 import { Protected } from "./components/protected";
 import { AppLayout } from "./components/layout";
@@ -43,10 +42,6 @@ function App() {
           </Protected>
         </Route>
       </Switch>
-      {/* Do not remove — off by default, activated by parent iframe via postMessage */}
-      {import.meta.env.DEV && <AgentFeedback />}
-      {/* "Made with Runable" badge - if user asks to remove the runable badge, remove this code as well as comment */}
-      {<RunableBadge />}
     </Provider>
   );
 }

@@ -3,14 +3,14 @@ import { LayoutGrid, List, Plus, Search, GripVertical } from "lucide-react";
 import { OPP_STAGES } from "../../shared/constants";
 import { useCrm } from "../hooks/use-crm";
 import { useUpdateOpportunity, type Opportunity } from "../queries/crm";
-import { brl, brlShort, fmtDate, MONTHS } from "../lib/format";
-import { inRange, monthlySeries, monthRange } from "../lib/metrics";
+import { brl, brlShort, fmtDate, isoDate, MONTHS, pct } from "../lib/format";
+import { inRange, isProposal, monthlySeries, monthRange } from "../lib/metrics";
 import { Bars, Legend } from "../components/charts";
 import { oppStageColor, oppStageTone, tempTone } from "../lib/tones";
 import { GlobalFilters } from "../components/filters";
 import { BROKER_REQUIRED_OPP_STAGES } from "../../shared/constants";
 import { DeclineDialog, OpportunityDialog, SaleDialog } from "../components/forms";
-import { Avatar, Badge, Button, Input, KpiStrip, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Select, Table, useToast } from "../components/ui/kit";
+import { Avatar, Badge, Button, Input, KpiStrip, PageHeader, PageSkeleton, Panel, PanelHeader, Progress, Segmented, Select, Table, Tabs, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
 export default function Pipeline() {
@@ -26,6 +26,7 @@ export default function Pipeline() {
   const [selling, setSelling] = useState<Opportunity | null>(null);
   const [declining, setDeclining] = useState<Opportunity | null>(null);
   const [mode, setMode] = useState<"vgv" | "un">("vgv");
+  const [tab, setTab] = useState<"negociacoes" | "analise">("negociacoes");
   const update = useUpdateOpportunity();
   const toast = useToast();
 
@@ -72,12 +73,22 @@ export default function Pipeline() {
   if (c.isLoading) return <PageSkeleton />;
 
   const open_ = list.filter((o) => o.stage !== "Venda" && o.stage !== "Declinou");
+  const month = isoDate(new Date()).slice(0, 7);
+  const soldMonth = list.filter((o) => o.stage === "Venda" && o.date.slice(0, 7) === month);
   const kpis = [
-    { label: "Negociações abertas", value: open_.length, hint: `${list.filter((o) => o.temperature === "Quente" && open_.includes(o)).length} quentes` },
-    { label: "Propostas em análise", value: list.filter((o) => o.stage === "Proposta").length },
-    { label: "Aguardando assinatura", value: list.filter((o) => o.stage === "Aguardando assinatura").length },
+    { label: "Negociações em aberto", value: open_.length, hint: `${open_.filter((o) => o.temperature === "Quente").length} quentes` },
     { label: "VGV em aberto no funil", value: brlShort(open_.reduce((s, o) => s + o.value, 0)) },
+    { label: "Aguardando assinatura", value: list.filter((o) => o.stage === "Aguardando assinatura").length, hint: "aprovação e contrato" },
+    { label: "Vendas no mês", value: soldMonth.length, hint: brlShort(soldMonth.reduce((s, o) => s + o.value, 0)) },
   ];
+
+  // Análise: conversão e motivos
+  const proposals = list.filter(isProposal);
+  const sales = list.filter((o) => o.stage === "Venda");
+  const declined = list.filter((o) => o.stage === "Declinou");
+  const avgDiscount = sales.length ? sales.reduce((s, o) => s + (o.discount ?? 0), 0) / sales.length : 0;
+  const reasons = [...declined.reduce((m, o) => m.set(o.declineReason || "Não informado", (m.get(o.declineReason || "Não informado") ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
 
   const openEdit = (o: Opportunity | null) => {
     setEditing(o);
@@ -122,13 +133,26 @@ export default function Pipeline() {
           </>
         }
       />
-      <KpiStrip items={kpis} />
+      <div className="mb-5">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "negociacoes", label: "Negociações", count: open_.length },
+            { value: "analise", label: "Análise do pipeline" },
+          ]}
+        />
+      </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+      {tab === "negociacoes" && <KpiStrip items={kpis} />}
+
+      {tab === "analise" && (
+      <>
+      <div className="grid gap-5 xl:grid-cols-2">
         <Panel>
           <PanelHeader
             title="Status por empreendimento"
-            subtitle="Clique em um empreendimento para filtrar o pipeline"
+            subtitle="Clique em um empreendimento para abrir as negociações dele"
             right={
               product ? (
                 <button type="button" onClick={() => setProduct("")} className="text-[12.5px] font-medium text-brand-strong hover:underline">
@@ -146,7 +170,7 @@ export default function Pipeline() {
                   key={r.p.id}
                   aria-label={`Filtrar por ${r.p.name}`}
                   aria-pressed={product === r.p.id}
-                  onClick={() => setProduct(product === r.p.id ? "" : r.p.id)}
+                  onClick={() => { setProduct(r.p.id); setTab("negociacoes"); toast(`Negociações filtradas: ${r.p.name}`); }}
                   className={cn("w-full rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/50", product === r.p.id && "bg-brand-soft")}
                 >
                   <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[12.5px]">
@@ -184,6 +208,43 @@ export default function Pipeline() {
         </Panel>
       </div>
 
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <Panel>
+          <PanelHeader title="Conversão por etapa" subtitle="Negociações com os filtros atuais" />
+          <div className="space-y-4 px-5 pb-5">
+            {[
+              { l: "Negociação → Proposta", v: list.length ? proposals.length / list.length : 0, d: `${proposals.length} de ${list.length}` },
+              { l: "Proposta → Venda", v: proposals.length ? sales.length / proposals.length : 0, d: `${sales.length} de ${proposals.length}` },
+              { l: "Declínio sobre propostas", v: proposals.length ? declined.length / proposals.length : 0, d: `${declined.length} de ${proposals.length}`, bad: true },
+            ].map((r) => (
+              <div key={r.l}>
+                <div className="mb-1.5 flex items-baseline justify-between text-[13px]"><span>{r.l}</span><span className="tnum"><b>{pct(r.v)}</b> <span className="text-[12px] text-muted-foreground">{r.d}</span></span></div>
+                <Progress value={r.v} tone={r.bad ? "danger" : "brand"} className="h-2" />
+              </div>
+            ))}
+            <div className="flex items-baseline justify-between border-t border-border pt-3 text-[13px]">
+              <span>Desconto médio nas vendas (sobre tabela)</span>
+              <b className="tnum">{avgDiscount.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</b>
+            </div>
+          </div>
+        </Panel>
+        <Panel>
+          <PanelHeader title="Motivos de não compra" subtitle="Negociações declinadas" right={<Badge tone="danger">{declined.length}</Badge>} />
+          <div className="space-y-3 px-5 pb-5">
+            {reasons.length === 0 ? <p className="text-[13px] text-muted-foreground">Nenhuma negociação declinada.</p> : reasons.map(([r, n]) => (
+              <div key={r}>
+                <div className="mb-1 flex justify-between text-[13px]"><span>{r}</span><span className="tnum text-muted-foreground">{n}</span></div>
+                <Progress value={n / reasons[0][1]} tone="danger" className="h-2" />
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+      </>
+      )}
+
+      {tab === "negociacoes" && (
+      <>
       <div className="mt-5 mb-4 flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle" />
@@ -293,6 +354,8 @@ export default function Pipeline() {
             ))}
           </Table>
         </Panel>
+      )}
+      </>
       )}
       <p className="mt-3 text-[12px] text-subtle">Vendas só são confirmadas após aprovação comercial e validação financeira. Proposta não bloqueia estoque automaticamente.</p>
 
