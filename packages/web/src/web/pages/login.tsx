@@ -43,7 +43,10 @@ export default function LoginPage() {
       {/* Painel da marca */}
       <div className="relative hidden bg-forest lg:flex lg:items-center lg:justify-center">
         <div className="flex items-center gap-5 text-white">
-          <img src="/images/logo-white.png" alt="" className="size-16" />
+          <div className="relative size-16">
+            <span className="logo-ripple" />
+            <img src="/images/logo-white.png" alt="" className="logo-breath size-16" />
+          </div>
           <span className="font-display text-[34px] font-semibold tracking-[0.02em]">PORTO FLORÊNCIO</span>
         </div>
       </div>
@@ -51,7 +54,10 @@ export default function LoginPage() {
       {/* Formulário */}
       <div className="flex items-center justify-center px-6 py-12">
         <form onSubmit={submit} className="w-full max-w-[360px]">
-          <img src="/images/logo.png" alt="" className="mb-8 size-10 lg:hidden" />
+          <div className="relative mb-8 size-10 lg:hidden">
+            <span className="logo-ripple" style={{ borderColor: "rgba(95,174,58,0.45)" }} />
+            <img src="/images/logo.png" alt="" className="logo-breath size-10" />
+          </div>
           <h2 className="text-[24px] font-semibold">{mode === "in" ? "Entrar" : "Criar conta"}</h2>
           <p className="mt-1.5 text-[13.5px] text-muted-foreground">
             {mode === "in" ? "Acesse com seu e-mail corporativo." : "Cadastre um novo usuário da equipe comercial."}
