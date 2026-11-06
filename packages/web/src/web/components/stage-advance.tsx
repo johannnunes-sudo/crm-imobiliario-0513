@@ -3,7 +3,7 @@ import { ArrowRight, Undo2 } from "lucide-react";
 import { ACTIVITY_BY_STAGE, AGENCY_STAGES, METRIC_BY_STAGE, type AgencyStage } from "../../shared/constants";
 import { useCreateActivity, useCrmData, useUpdateAgency, type Agency } from "../queries/crm";
 import { agencyStageColor } from "../lib/tones";
-import { ActivityFields, emptyActivity, OpportunityDialog, SaleDialog, type ActivityDraft } from "./forms";
+import { ActivityFields, activityMissing, emptyActivity, OpportunityDialog, SaleDialog, type ActivityDraft } from "./forms";
 import { Button, Modal, useToast } from "./ui/kit";
 
 type Req = { agency: Agency; stage: AgencyStage } | null;
@@ -82,7 +82,7 @@ export function useStageAdvance() {
               <Button
                 variant="primary"
                 loading={create.isPending}
-                disabled={!f.date}
+                disabled={activityMissing(f).length > 0}
                 onClick={async () => {
                   await create.mutateAsync({ ...f, status: "Concluída", time: null });
                   move(req.agency, req.stage, `${req.stage} registrada · +${f.type === "Visita à obra" ? f.participants : 1} em ${METRIC_BY_STAGE[req.stage]}`);

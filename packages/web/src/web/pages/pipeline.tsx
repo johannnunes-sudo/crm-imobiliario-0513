@@ -8,6 +8,7 @@ import { inRange, monthlySeries, monthRange } from "../lib/metrics";
 import { Bars, Legend } from "../components/charts";
 import { oppStageColor, oppStageTone, tempTone } from "../lib/tones";
 import { GlobalFilters } from "../components/filters";
+import { BROKER_REQUIRED_OPP_STAGES } from "../../shared/constants";
 import { DeclineDialog, OpportunityDialog, SaleDialog } from "../components/forms";
 import { Avatar, Badge, Button, Input, KpiStrip, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Select, Table, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
@@ -89,6 +90,11 @@ export default function Pipeline() {
     setDragId(null);
     if (!o || o.stage === stage) return;
     // Virar venda exige o valor de contrato
+    // Proposta/assinatura exigem corretor: abre o cadastro para completar
+    if (BROKER_REQUIRED_OPP_STAGES.has(stage) && stage !== "Venda" && !o.brokerName?.trim()) {
+      toast("Informe o corretor para mover para " + stage);
+      return openEdit({ ...o, stage });
+    }
     if (stage === "Venda") return setSelling(o);
     // Declinar exige o motivo de não compra
     if (stage === "Declinou") return setDeclining(o);

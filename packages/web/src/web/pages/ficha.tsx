@@ -226,6 +226,9 @@ export default function Ficha() {
                 ["CRECI", a.creci],
                 ["Corretores estimados", a.brokers],
                 ["Etapa", a.stage],
+                ["Foco de venda", a.focus],
+                ["Cidades onde foca a venda", (a.focusCities ?? []).join(", ")],
+                ["Padrões de produto", (a.standards ?? []).join(", ")],
               ].map(([k, v]) => (
                 <div key={k as string} className="border-t border-border py-3">
                   <dt className="text-[12px] text-muted-foreground">{k}</dt>

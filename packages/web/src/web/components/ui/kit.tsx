@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { X, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -280,7 +281,8 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
     return () => window.removeEventListener("keydown", h);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // portal no <body>: animações com transform nas páginas prendiam o "fixed" e cortavam o modal
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-forest/25 px-4 py-[8vh] backdrop-blur-[2px] animate-in fade-in duration-150">
       <button type="button" aria-label="Fechar" tabIndex={-1} className="fixed inset-0 cursor-default" onClick={onClose} />
       <div
@@ -299,7 +301,8 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
         <div className="px-5 py-4">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-border bg-muted/40 px-5 py-3 rounded-b-xl">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

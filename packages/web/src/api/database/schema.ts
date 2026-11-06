@@ -37,6 +37,12 @@ export const agencies = sqliteTable("agencies", {
   email: text("email"),
   creci: text("creci"),
   notes: text("notes"),
+  /** Lançamento | Estoque / pronto | Ambos */
+  focus: text("focus"),
+  /** padrões de produto que trabalha (lista) */
+  standards: text("standards", { mode: "json" }).$type<string[]>(),
+  /** cidades onde foca a venda (lista) */
+  focusCities: text("focus_cities", { mode: "json" }).$type<string[]>(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
@@ -52,6 +58,8 @@ export const activities = sqliteTable("activities", {
   managerId: integer("manager_id").references(() => managers.id),
   productId: integer("product_id").references(() => products.id),
   personName: text("person_name"),
+  /** corretor envolvido (obrigatório em atendimento ao cliente) */
+  brokerName: text("broker_name"),
   participants: integer("participants").notNull().default(1),
   channel: text("channel"),
   notes: text("notes"),

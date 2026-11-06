@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ACTIVITY_TYPES, AGENCY_STAGES, CHANNELS, DECLINE_REASONS, OPP_STAGES, TEMPERATURES } from "../../shared/constants";
+import { ACTIVITY_TYPES, AGENCY_FOCUS, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, CHANNELS, DECLINE_REASONS, FOCUS_CITIES, OPP_STAGES, PRODUCT_STANDARDS, TEMPERATURES } from "../../shared/constants";
 import {
   useCreateActivity, useCreateAgency, useCreateOpportunity, useUpdateAgency, useUpdateOpportunity, useRemoveOpportunity,
   type Agency, type Opportunity, useCrmData,
@@ -59,6 +59,7 @@ export function OpportunityDialog({ open, onClose, initial, preset, onSaved }: {
     !f.tableValue && "valor de tabela",
     !f.proposalValue && "valor da proposta",
     isSaleStage && !f.contractValue && "valor de contrato",
+    BROKER_REQUIRED_OPP_STAGES.has(f.stage) && !f.brokerName?.trim() && "corretor",
     f.stage === "Declinou" && !f.declineReason && "motivo de não compra",
     f.stage === "Declinou" && f.declineReason === "Outro" && !f.declineNote?.trim() && "descrição do motivo",
   ].filter(Boolean) as string[];
@@ -116,8 +117,8 @@ export function OpportunityDialog({ open, onClose, initial, preset, onSaved }: {
             ))}
           </Select>
         </Field>
-        <Field label="Corretor">
-          <Input value={f.brokerName ?? ""} onChange={(e) => set("brokerName", e.target.value)} placeholder="Nome do corretor" />
+        <Field label={BROKER_REQUIRED_OPP_STAGES.has(f.stage) ? "Corretor *" : "Corretor"} hint={BROKER_REQUIRED_OPP_STAGES.has(f.stage) ? "Obrigatório em proposta e venda" : undefined}>
+          <Input value={f.brokerName ?? ""} onChange={(e) => set("brokerName", e.target.value)} placeholder="Nome do corretor" className={BROKER_REQUIRED_OPP_STAGES.has(f.stage) && !f.brokerName?.trim() ? "border-danger/60" : undefined} />
         </Field>
         <Field label="Empreendimento">
           <Select value={f.productId ?? ""} onChange={(e) => set("productId", e.target.value ? Number(e.target.value) : null)}>
@@ -248,6 +249,7 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
   const { products } = useCrmData();
   const [sel, setSel] = useState<number | null>(null);
   const [contract, setContract] = useState<number | null>(null);
+  const [broker, setBroker] = useState("");
   const update = useUpdateOpportunity();
   const toast = useToast();
   const o = opps.find((x) => x.id === sel) ?? null;
@@ -256,17 +258,19 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
     const first = opps[0] ?? null;
     setSel(first?.id ?? null);
     setContract(first ? (first.contractValue ?? first.proposalValue ?? first.value) : null);
+    setBroker(first?.brokerName ?? "");
   }, [open]); // eslint-disable-line
   const pick = (id: number) => {
     const x = opps.find((y) => y.id === id);
     setSel(id);
     setContract(x ? (x.contractValue ?? x.proposalValue ?? x.value) : null);
+    setBroker(x?.brokerName ?? "");
   };
   const table = o?.tableValue ?? null;
   const confirm = async () => {
-    if (!o || !contract) return;
+    if (!o || !contract || !broker.trim()) return;
     const discount = table ? Math.max(0, Math.round((1 - contract / table) * 1000) / 10) : o.discount;
-    await update.mutateAsync({ id: o.id, stage: "Venda", temperature: "Quente", contractValue: contract, value: contract, discount });
+    await update.mutateAsync({ id: o.id, stage: "Venda", temperature: "Quente", contractValue: contract, value: contract, discount, brokerName: broker.trim() });
     toast(`Venda registrada · ${o.client}`);
     onDone?.({ ...o, stage: "Venda", contractValue: contract, value: contract, discount });
     onClose();
@@ -286,7 +290,7 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
             </Button>
           )}
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={confirm} loading={update.isPending} disabled={!o || !contract}>
+          <Button variant="primary" onClick={confirm} loading={update.isPending} disabled={!o || !contract || !broker.trim()}>
             Confirmar venda
           </Button>
         </>
@@ -321,6 +325,9 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
             </div>
           </div>
         )}
+        <Field label="Corretor *" hint="Obrigatório para registrar a venda">
+          <Input value={broker} onChange={(e) => setBroker(e.target.value)} placeholder="Nome do corretor" className={!broker.trim() ? "border-danger/60" : undefined} />
+        </Field>
         <Field label="Valor de contrato (R$) *" hint={table && contract ? `Desconto final ${pct(Math.max(0, 1 - contract / table), 1)} sobre a tabela` : undefined}>
           <Input type="number" min={0} value={money(contract)} onChange={(e) => setContract(toMoney(e.target.value))} placeholder="0" />
         </Field>
@@ -333,7 +340,7 @@ export function SaleDialog({ open, onClose, opps, onDone, onNew, agencyName }: {
 
 type AgencyDraft = Omit<Agency, "id" | "createdAt">;
 const emptyAgency = (): AgencyDraft => ({
-  name: "", managerId: null, stage: "Captação", brokers: 0, city: "", contactName: "", phone: "", email: "", creci: "", notes: "", active: true,
+  name: "", managerId: null, stage: "Captação", brokers: 0, city: "", contactName: "", phone: "", email: "", creci: "", notes: "", focus: null, standards: [], focusCities: [], active: true,
 });
 
 export function AgencyDialog({ open, onClose, initial }: { open: boolean; onClose: () => void; initial?: Agency | null }) {
@@ -399,6 +406,18 @@ export function AgencyDialog({ open, onClose, initial }: { open: boolean; onClos
         <Field label="Corretores estimados" hint="Estimativa cadastral">
           <Input type="number" value={f.brokers || ""} onChange={(e) => set("brokers", Number(e.target.value))} />
         </Field>
+        <Field label="Foco de venda">
+          <Select value={f.focus ?? ""} onChange={(e) => set("focus", e.target.value || null)}>
+            <option value="">Não informado</option>
+            {AGENCY_FOCUS.map((x) => <option key={x}>{x}</option>)}
+          </Select>
+        </Field>
+        <Field label="Padrões de produto que trabalha" className="col-span-2" hint="Clique para marcar · digite para incluir outro">
+          <ChipPicker options={PRODUCT_STANDARDS} value={f.standards ?? []} onChange={(v) => set("standards", v)} />
+        </Field>
+        <Field label="Cidades onde foca a venda" className="col-span-2">
+          <ChipPicker options={FOCUS_CITIES} value={f.focusCities ?? []} onChange={(v) => set("focusCities", v)} />
+        </Field>
         <Field label="Observações" className="col-span-2">
           <Textarea value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} rows={3} />
         </Field>
@@ -407,15 +426,43 @@ export function AgencyDialog({ open, onClose, initial }: { open: boolean; onClos
   );
 }
 
+/** Seleção múltipla em chips, com sugestões e opção de incluir outro valor */
+export function ChipPicker({ options, value, onChange }: { options: readonly string[]; value: string[]; onChange: (v: string[]) => void }) {
+  const [extra, setExtra] = useState("");
+  const all = [...options, ...value.filter((v) => !options.includes(v))];
+  const toggle = (x: string) => onChange(value.includes(x) ? value.filter((v) => v !== x) : [...value, x]);
+  const add = () => {
+    const t = extra.trim();
+    if (t && !value.includes(t)) onChange([...value, t]);
+    setExtra("");
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {all.map((x) => {
+        const on = value.includes(x);
+        return (
+          <button type="button" key={x} onClick={() => toggle(x)} className={on ? "rounded-full border border-brand bg-brand-soft px-2.5 py-1 text-[12.5px] font-medium text-forest" : "rounded-full border border-border px-2.5 py-1 text-[12.5px] text-muted-foreground hover:border-border-strong"}>
+            {on ? "✓ " : ""}{x}
+          </button>
+        );
+      })}
+      <input value={extra} onChange={(e) => setExtra(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} onBlur={add} placeholder="+ outro" className="h-7 w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 text-[12.5px] outline-none focus:border-brand" />
+    </div>
+  );
+}
+
 /* ---------- Atividade ---------- */
 
 export type ActivityDraft = {
   type: string; date: string; time: string; status: string; agencyId: number | null; managerId: number | null; productId: number | null;
-  personName: string; participants: number; channel: string; notes: string; nextAction: string; nextDate: string;
+  personName: string; brokerName: string; participants: number; channel: string; notes: string; nextAction: string; nextDate: string;
 };
+/** O que falta para salvar a atividade (vazio = pode salvar) */
+export const activityMissing = (f: ActivityDraft) =>
+  [!f.date && "data", BROKER_REQUIRED_ACTIVITY.has(f.type) && !f.brokerName?.trim() && "corretor"].filter(Boolean) as string[];
 export const emptyActivity = (over: Partial<ActivityDraft> = {}): ActivityDraft => ({
   type: ACTIVITY_TYPES[1], date: isoDate(new Date()), time: "", status: "Concluída", agencyId: null, managerId: null, productId: null,
-  personName: "", participants: 1, channel: "WhatsApp", notes: "", nextAction: "", nextDate: "", ...over,
+  personName: "", brokerName: "", participants: 1, channel: "WhatsApp", notes: "", nextAction: "", nextDate: "", ...over,
 });
 
 export function ActivityFields({ f, set, compact }: { f: ActivityDraft; set: <K extends keyof ActivityDraft>(k: K, v: ActivityDraft[K]) => void; compact?: boolean }) {
@@ -458,6 +505,11 @@ export function ActivityFields({ f, set, compact }: { f: ActivityDraft; set: <K 
           <Field label={f.type === "Atendimento ao cliente" ? "Cliente" : "Corretor"}>
             <Input value={f.personName} onChange={(e) => set("personName", e.target.value)} placeholder="Nome" />
           </Field>
+          {BROKER_REQUIRED_ACTIVITY.has(f.type) && (
+            <Field label="Corretor *" hint="Obrigatório no atendimento ao cliente">
+              <Input value={f.brokerName ?? ""} onChange={(e) => set("brokerName", e.target.value)} placeholder="Corretor que trouxe o cliente" className={!f.brokerName?.trim() ? "border-danger/60" : undefined} />
+            </Field>
+          )}
           <Field label="Canal">
             <Select value={f.channel} onChange={(e) => set("channel", e.target.value)}>
               {CHANNELS.map((c) => <option key={c}>{c}</option>)}
@@ -509,7 +561,7 @@ export function ActivityDialog({ open, onClose, preset }: { open: boolean; onClo
           <Button
             variant="primary"
             loading={create.isPending}
-            disabled={!f.date}
+            disabled={activityMissing(f).length > 0}
             onClick={async () => {
               await create.mutateAsync({ ...f, time: f.time || null });
               toast(planned ? "Atividade agendada" : "Atividade registrada");

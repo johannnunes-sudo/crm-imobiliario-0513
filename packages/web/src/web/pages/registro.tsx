@@ -5,7 +5,7 @@ import { useCrm } from "../hooks/use-crm";
 import { useCreateActivity, type Activity } from "../queries/crm";
 import { NextStepDialog } from "../components/next-step";
 import { isoDate } from "../lib/format";
-import { ActivityFields, OpportunityDialog, emptyActivity, type ActivityDraft } from "../components/forms";
+import { ActivityFields, OpportunityDialog, activityMissing, emptyActivity, type ActivityDraft } from "../components/forms";
 import { ActivityFeed } from "../components/blocks";
 import { Button, PageHeader, PageSkeleton, Panel, PanelHeader, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
@@ -83,9 +83,9 @@ export default function Registro() {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-muted/40 px-5 py-3 rounded-b-lg">
-            <span className="mr-auto text-[12px] text-subtle">Conta imediatamente no indicador correspondente.</span>
-            <Button onClick={() => save(true)} loading={create.isPending}>Salvar e registrar outra</Button>
-            <Button variant="primary" onClick={() => save(false)} loading={create.isPending}>Salvar atividade</Button>
+            <span className="mr-auto text-[12px] text-subtle">{activityMissing(f).length ? `Falta: ${activityMissing(f).join(", ")}` : "Conta imediatamente no indicador correspondente."}</span>
+            <Button onClick={() => save(true)} loading={create.isPending} disabled={activityMissing(f).length > 0}>Salvar e registrar outra</Button>
+            <Button variant="primary" onClick={() => save(false)} loading={create.isPending} disabled={activityMissing(f).length > 0}>Salvar atividade</Button>
           </div>
         </Panel>
         <div>

@@ -4,7 +4,7 @@ import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
 import { businessDaysBetween, todayIso } from "../../shared/dates";
 import { auth } from "../auth";
-import { ACTIVITY_BY_STAGE, AGENCY_STAGES, DECLINE_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
+import { ACTIVITY_BY_STAGE, AGENCY_STAGES, BROKER_REQUIRED_ACTIVITY, BROKER_REQUIRED_OPP_STAGES, DECLINE_REASONS, ROLES, type AgencyStage, type Role } from "../../shared/constants";
 import { db } from "../database";
 import * as s from "../database/schema";
 
@@ -110,6 +110,9 @@ const agencyInput = z.object({
   email: optStr,
   creci: optStr,
   notes: optStr,
+  focus: optStr,
+  standards: z.array(z.string()).nullable().optional(),
+  focusCities: z.array(z.string()).nullable().optional(),
   active: z.boolean().optional(),
 });
 async function getAgency(agencyId: number) {
@@ -180,6 +183,7 @@ const activityInput = z.object({
   managerId: optNum,
   productId: optNum,
   personName: optStr,
+  brokerName: optStr,
   participants: z.number().optional(),
   channel: optStr,
   notes: optStr,
@@ -200,6 +204,8 @@ export const activities = {
     denyApprover(a);
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
+    if (BROKER_REQUIRED_ACTIVITY.has(input.type) && !input.brokerName?.trim())
+      throw new ORPCError("BAD_REQUEST", { message: "Informe o corretor do atendimento ao cliente." });
     // antecedência fixada no cadastro (regra: >= 3 dias úteis = planejada)
     const [row] = await db.insert(s.activities).values({ ...input, leadDays: businessDaysBetween(todayIso(), input.date) }).returning();
     await advanceByActivity({ ...input, status: input.status ?? "Concluída" });
@@ -267,6 +273,11 @@ function assertDeclineReason(o: { stage?: string | null; declineReason?: string 
   if (o.declineReason === "Outro" && !o.declineNote?.trim())
     throw new ORPCError("BAD_REQUEST", { message: "Descreva o motivo quando escolher \"Outro\"." });
 }
+/** Regra: proposta, aguardando assinatura e venda exigem o corretor */
+function assertBroker(o: { stage?: string | null; brokerName?: string | null }) {
+  if (o.stage && BROKER_REQUIRED_OPP_STAGES.has(o.stage) && !o.brokerName?.trim())
+    throw new ORPCError("BAD_REQUEST", { message: "Informe o corretor: é obrigatório em proposta e venda." });
+}
 export const opportunities = {
   list: access.handler(({ context: { access: a } }) =>
     db.select().from(s.opportunities).where(own(a, s.opportunities.managerId)).orderBy(desc(s.opportunities.date)),
@@ -276,6 +287,7 @@ export const opportunities = {
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
     assertDeclineReason(input);
+    assertBroker(input);
     const [row] = await db.insert(s.opportunities).values(input).returning();
     await advanceByOpportunity(row);
     return row;
@@ -288,6 +300,8 @@ export const opportunities = {
     const entering = rest.stage === "Declinou" && cur.stage !== "Declinou";
     const changingReason = rest.declineReason !== undefined && rest.declineReason !== cur.declineReason;
     if (entering || changingReason) assertDeclineReason({ ...cur, ...rest });
+    // corretor obrigatório ao entrar em proposta/assinatura/venda (ou ao apagar o corretor)
+    if ((rest.stage && rest.stage !== cur.stage) || rest.brokerName !== undefined) assertBroker({ ...cur, ...rest });
     const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
     const [row] = await db.update(s.opportunities).set(data).where(eq(s.opportunities.id, id)).returning();
     await advanceByOpportunity(row);

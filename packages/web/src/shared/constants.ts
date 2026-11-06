@@ -120,3 +120,14 @@ export const DECLINE_REASONS = [
   "Cliente sem retorno",
   "Outro",
 ] as const;
+
+/** Corretor obrigatório: atividades e etapas de negociação que exigem o nome do corretor */
+export const BROKER_REQUIRED_ACTIVITY = new Set(["Atendimento ao cliente"]);
+export const BROKER_REQUIRED_OPP_STAGES = new Set(["Proposta", "Aguardando assinatura", "Venda"]);
+
+/** Perfil comercial da imobiliária */
+export const AGENCY_FOCUS = ["Lançamento", "Estoque / pronto", "Ambos"] as const;
+/** Padrões de produto que a imobiliária trabalha (sugestões; aceita outros) */
+export const PRODUCT_STANDARDS = ["Frente mar", "Quadra mar", "Meia Praia", "Morretes", "Centro de Itapema", "Perequê", "Porto Belo centro", "Bombinhas", "Alto padrão", "Médio padrão", "Econômico"] as const;
+/** Cidades onde a imobiliária foca a venda (sugestões; aceita outras) */
+export const FOCUS_CITIES = ["Itapema", "Porto Belo", "Bombinhas", "Balneário Camboriú", "Camboriú", "Tijucas", "Itajaí"] as const;
