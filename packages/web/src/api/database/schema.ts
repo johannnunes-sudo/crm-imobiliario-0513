@@ -76,7 +76,8 @@ export const opportunities = sqliteTable("opportunities", {
   proposalValue: real("proposal_value"), // valor da proposta
   contractValue: real("contract_value"), // valor de contrato (venda)
   discount: real("discount").notNull().default(0),
-  declineReason: text("decline_reason"),
+  declineReason: text("decline_reason"), // motivo de não compra (lista DECLINE_REASONS)
+  declineNote: text("decline_note"), // detalhe do motivo (obrigatório em "Outro")
   date: text("date").notNull(), // YYYY-MM-DD
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });

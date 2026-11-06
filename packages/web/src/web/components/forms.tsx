@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ACTIVITY_TYPES, AGENCY_STAGES, CHANNELS, OPP_STAGES, TEMPERATURES } from "../../shared/constants";
+import { ACTIVITY_TYPES, AGENCY_STAGES, CHANNELS, DECLINE_REASONS, OPP_STAGES, TEMPERATURES } from "../../shared/constants";
 import {
   useCreateActivity, useCreateAgency, useCreateOpportunity, useUpdateAgency, useUpdateOpportunity, useRemoveOpportunity,
   type Agency, type Opportunity, useCrmData,
@@ -25,6 +25,7 @@ const emptyOpp = (): OppDraft => ({
   contractValue: null,
   discount: 0,
   declineReason: "",
+  declineNote: "",
   date: isoDate(new Date()),
 });
 
@@ -58,6 +59,8 @@ export function OpportunityDialog({ open, onClose, initial, preset, onSaved }: {
     !f.tableValue && "valor de tabela",
     !f.proposalValue && "valor da proposta",
     isSaleStage && !f.contractValue && "valor de contrato",
+    f.stage === "Declinou" && !f.declineReason && "motivo de não compra",
+    f.stage === "Declinou" && f.declineReason === "Outro" && !f.declineNote?.trim() && "descrição do motivo",
   ].filter(Boolean) as string[];
   const save = async () => {
     if (missing.length) return;
@@ -171,10 +174,68 @@ export function OpportunityDialog({ open, onClose, initial, preset, onSaved }: {
           <Input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} />
         </Field>
         {f.stage === "Declinou" && (
-          <Field label="Motivo da declinação" className="col-span-2">
-            <Input value={f.declineReason ?? ""} onChange={(e) => set("declineReason", e.target.value)} placeholder="Ex.: preço acima do orçamento" />
-          </Field>
+          <DeclineFields reason={f.declineReason ?? ""} note={f.declineNote ?? ""} onReason={(v) => set("declineReason", v)} onNote={(v) => set("declineNote", v)} />
         )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Declinar (motivo obrigatório) ---------- */
+
+export function DeclineFields({ reason, note, onReason, onNote }: { reason: string; note: string; onReason: (v: string) => void; onNote: (v: string) => void }) {
+  return (
+    <>
+      <Field label="Motivo de não compra *" className="col-span-2">
+        <Select value={reason} onChange={(e) => onReason(e.target.value)} className={!reason ? "border-danger/60" : undefined}>
+          <option value="">Selecione o motivo</option>
+          {DECLINE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </Select>
+      </Field>
+      {reason && (
+        <Field label={reason === "Outro" ? "Descreva o motivo *" : "Detalhe (opcional)"} className="col-span-2">
+          <Textarea rows={2} value={note} onChange={(e) => onNote(e.target.value)} placeholder="Ex.: cliente preferiu unidade com vista mar em outro empreendimento" />
+        </Field>
+      )}
+    </>
+  );
+}
+
+/** Aberto ao arrastar um card para "Declinou": só conclui com o motivo selecionado */
+export function DeclineDialog({ opp, onClose }: { opp: Opportunity | null; onClose: () => void }) {
+  const update = useUpdateOpportunity();
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    if (opp) { setReason(""); setNote(""); }
+  }, [opp]);
+  const ok = !!reason && (reason !== "Outro" || !!note.trim());
+  const confirm = async () => {
+    if (!opp || !ok) return;
+    const leavingSale = opp.stage === "Venda";
+    await update.mutateAsync({
+      id: opp.id,
+      stage: "Declinou",
+      temperature: "Frio",
+      declineReason: reason,
+      declineNote: note.trim() || null,
+      ...(leavingSale ? { value: opp.proposalValue ?? opp.value, contractValue: null } : {}),
+    });
+    toast(`${opp.client} → Declinou · ${reason}`);
+    onClose();
+  };
+  return (
+    <Modal
+      open={!!opp}
+      onClose={onClose}
+      title="Declinar negociação"
+      subtitle={opp ? `${opp.client}${opp.unit ? ` · un. ${opp.unit}` : ""} · o motivo é obrigatório e alimenta o relatório de motivos de não compra` : undefined}
+      width={520}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="danger" onClick={confirm} loading={update.isPending} disabled={!ok}>Declinar</Button></>}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <DeclineFields reason={reason} note={note} onReason={setReason} onNote={setNote} />
       </div>
     </Modal>
   );

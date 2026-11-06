@@ -3,7 +3,7 @@ import { asc, desc, eq, isNull, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { authed } from "../middleware/auth";
 import { auth } from "../auth";
-import { ROLES, type Role } from "../../shared/constants";
+import { DECLINE_REASONS, ROLES, type Role } from "../../shared/constants";
 import { db } from "../database";
 import * as s from "../database/schema";
 
@@ -215,12 +215,21 @@ const oppInput = z.object({
   contractValue: optNum,
   discount: z.number().optional(),
   declineReason: optStr,
+  declineNote: optStr,
   date: z.string(),
 });
 async function getOpportunity(oppId: number) {
   const [row] = await db.select().from(s.opportunities).where(eq(s.opportunities.id, oppId));
   if (!row) throw new ORPCError("NOT_FOUND", { message: "Oportunidade não encontrada" });
   return row;
+}
+/** Regra: negociação declinada precisa de motivo da lista (e detalhe quando "Outro"). */
+function assertDeclineReason(o: { stage?: string | null; declineReason?: string | null; declineNote?: string | null }) {
+  if (o.stage !== "Declinou") return;
+  if (!o.declineReason || !(DECLINE_REASONS as readonly string[]).includes(o.declineReason))
+    throw new ORPCError("BAD_REQUEST", { message: "Selecione o motivo de não compra para declinar a negociação." });
+  if (o.declineReason === "Outro" && !o.declineNote?.trim())
+    throw new ORPCError("BAD_REQUEST", { message: "Descreva o motivo quando escolher \"Outro\"." });
 }
 export const opportunities = {
   list: access.handler(({ context: { access: a } }) =>
@@ -230,11 +239,17 @@ export const opportunities = {
     denyApprover(a);
     const input = forceManager(a, raw);
     if (input.agencyId) assertOwner(a, (await getAgency(input.agencyId)).managerId);
+    assertDeclineReason(input);
     return (await db.insert(s.opportunities).values(input).returning())[0];
   }),
   // aprovador pode atualizar negociações (aprovação de vendas)
   update: access.input(id.merge(oppInput.partial())).handler(async ({ input: { id, ...rest }, context: { access: a } }) => {
-    assertOwner(a, (await getOpportunity(id)).managerId);
+    const cur = await getOpportunity(id);
+    assertOwner(a, cur.managerId);
+    // valida ao entrar em "Declinou" ou ao trocar o motivo (registros antigos com texto livre continuam editáveis)
+    const entering = rest.stage === "Declinou" && cur.stage !== "Declinou";
+    const changingReason = rest.declineReason !== undefined && rest.declineReason !== cur.declineReason;
+    if (entering || changingReason) assertDeclineReason({ ...cur, ...rest });
     const data = seesAll(a) ? rest : { ...rest, managerId: undefined };
     return (await db.update(s.opportunities).set(data).where(eq(s.opportunities.id, id)).returning())[0];
   }),

@@ -95,3 +95,17 @@ export const ROLE_HINT: Record<Role, string> = {
   aprovador: "Vê todos os dados e atualiza negociações (aprovação de vendas)",
   pendente: "Sem acesso aos dados até um administrador liberar",
 };
+
+/** Motivos de não compra — obrigatório ao declinar uma negociação */
+export const DECLINE_REASONS = [
+  "Preço acima do orçamento",
+  "Condição de pagamento / fluxo",
+  "Crédito ou financiamento não aprovado",
+  "Comprou com concorrente",
+  "Localização",
+  "Planta, tipologia ou metragem",
+  "Prazo de entrega",
+  "Desistiu ou adiou a compra",
+  "Cliente sem retorno",
+  "Outro",
+] as const;

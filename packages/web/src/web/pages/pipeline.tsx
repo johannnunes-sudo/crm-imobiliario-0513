@@ -8,7 +8,7 @@ import { inRange, monthlySeries, monthRange } from "../lib/metrics";
 import { Bars, Legend } from "../components/charts";
 import { oppStageColor, oppStageTone, tempTone } from "../lib/tones";
 import { GlobalFilters } from "../components/filters";
-import { OpportunityDialog, SaleDialog } from "../components/forms";
+import { DeclineDialog, OpportunityDialog, SaleDialog } from "../components/forms";
 import { Avatar, Badge, Button, Input, KpiStrip, PageHeader, PageSkeleton, Panel, PanelHeader, Segmented, Select, Table, useToast } from "../components/ui/kit";
 import { cn } from "../lib/utils";
 
@@ -23,6 +23,7 @@ export default function Pipeline() {
   const [dragId, setDragId] = useState<number | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [selling, setSelling] = useState<Opportunity | null>(null);
+  const [declining, setDeclining] = useState<Opportunity | null>(null);
   const [mode, setMode] = useState<"vgv" | "un">("vgv");
   const update = useUpdateOpportunity();
   const toast = useToast();
@@ -89,6 +90,8 @@ export default function Pipeline() {
     if (!o || o.stage === stage) return;
     // Virar venda exige o valor de contrato
     if (stage === "Venda") return setSelling(o);
+    // Declinar exige o motivo de não compra
+    if (stage === "Declinou") return setDeclining(o);
     const leavingSale = o.stage === "Venda";
     update.mutate({
       id: o.id,
@@ -289,6 +292,7 @@ export default function Pipeline() {
 
       <OpportunityDialog open={open} onClose={() => setOpen(false)} initial={editing} />
       <SaleDialog open={!!selling} onClose={() => setSelling(null)} opps={selling ? [selling] : []} />
+      <DeclineDialog opp={declining} onClose={() => setDeclining(null)} />
     </>
   );
 }
